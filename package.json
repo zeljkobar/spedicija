@@ -1,0 +1,15 @@
+{
+  "name": "spedicija",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "build": "npm run build --prefix frontend",
+    "lint": "npm run lint --prefix frontend",
+    "prisma:generate": "npm run prisma:generate --prefix backend",
+    "prisma:migrate": "npm run prisma:migrate --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

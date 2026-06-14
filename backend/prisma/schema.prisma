@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CompanyType {
+  KLIJENT
+  DOBAVLJAC
+  BRODAR
+  PREVOZNIK
+  LUKA
+  AGENT
+  OSTALO
+}
+
+enum PositionStatus {
+  OTVORENA
+  U_TOKU
+  FAKTURISANA
+  NAPLACENA
+  ZATVORENA
+  STORNIRANA
+}
+
+enum InvoiceType {
+  ULAZNA
+  IZLAZNA
+}
+
+enum PaymentStatus {
+  NEPLACENO
+  DJELIMICNO_PLACENO
+  PLACENO
+  STORNIRANO
+}
+
+enum UserRole {
+  ADMIN
+  USER
+  VIEWER
+}
+
+model Company {
+  id            Int         @id @default(autoincrement())
+  name          String
+  pib           String?
+  vatNumber     String?
+  address       String?
+  city          String?
+  country       String?
+  contactPerson String?
+  phone         String?
+  email         String?
+  companyType   CompanyType @default(OSTALO)
+  note          String?
+  positions     Position[]
+  invoices      Invoice[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Position {
+  id              Int              @id @default(autoincrement())
+  containerNumber String           @unique
+  companyId       Int?
+  company         Company?         @relation(fields: [companyId], references: [id])
+  title           String?
+  openingDate     DateTime
+  closingDate     DateTime?
+  status          PositionStatus   @default(OTVORENA)
+  origin          String?
+  destination     String?
+  vessel          String?
+  bookingNumber   String?
+  blNumber        String?
+  note            String?
+  invoices        Invoice[]
+  additionalCosts AdditionalCost[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Invoice {
+  id               Int           @id @default(autoincrement())
+  positionId       Int
+  position         Position      @relation(fields: [positionId], references: [id])
+  companyId        Int
+  company          Company       @relation(fields: [companyId], references: [id])
+  invoiceType      InvoiceType
+  invoiceNumber    String
+  invoiceDate      DateTime
+  dueDate          DateTime?
+  description      String?
+  amountWithoutVat Decimal       @default(0) @db.Decimal(12, 2)
+  vatAmount        Decimal       @default(0) @db.Decimal(12, 2)
+  amountWithVat    Decimal       @default(0) @db.Decimal(12, 2)
+  currency         String        @default("EUR")
+  paymentStatus    PaymentStatus @default(NEPLACENO)
+  note             String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([invoiceNumber, companyId, invoiceType])
+}
+
+model AdditionalCost {
+  id          Int      @id @default(autoincrement())
+  positionId  Int
+  position    Position @relation(fields: [positionId], references: [id])
+  description String
+  costDate    DateTime
+  amount      Decimal  @default(0) @db.Decimal(12, 2)
+  currency    String   @default("EUR")
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(USER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

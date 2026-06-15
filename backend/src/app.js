@@ -1,11 +1,15 @@
 import cors from "cors";
 import express from "express";
 import morgan from "morgan";
+import adminRoutes from "./routes/admin.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 import companiesRoutes from "./routes/companies.routes.js";
 import costsRoutes from "./routes/costs.routes.js";
 import invoicesRoutes from "./routes/invoices.routes.js";
 import positionsRoutes from "./routes/positions.routes.js";
 import reportsRoutes from "./routes/reports.routes.js";
+import teamRoutes from "./routes/team.routes.js";
+import { requireAuth } from "./middleware/auth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFound } from "./middleware/notFound.js";
 
@@ -19,6 +23,10 @@ app.get("/api/health", (req, res) => {
   res.json({ success: true, message: "API radi" });
 });
 
+app.use("/api/auth", authRoutes);
+app.use("/api", requireAuth);
+app.use("/api/admin", adminRoutes);
+app.use("/api/team", teamRoutes);
 app.use("/api/companies", companiesRoutes);
 app.use("/api/positions", positionsRoutes);
 app.use("/api/invoices", invoicesRoutes);

@@ -12,6 +12,7 @@ export default [
       ecmaVersion: 2023,
       globals: {
         document: "readonly",
+        localStorage: "readonly",
         fetch: "readonly",
         window: "readonly",
         URLSearchParams: "readonly",

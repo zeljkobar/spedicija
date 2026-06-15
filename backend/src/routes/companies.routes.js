@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { requireWriteAccess } from "../middleware/auth.js";
 import {
   createCompany,
   deleteCompany,
@@ -20,12 +21,13 @@ const schema = z.object({
   phone: z.string().optional().nullable(),
   email: z.string().optional().nullable(),
   companyType: z.string().optional(),
+  organizationId: z.union([z.number(), z.string()]).optional().nullable(),
   note: z.string().optional().nullable()
 });
 
 router.get("/", async (req, res, next) => {
   try {
-    res.json({ success: true, data: await listCompanies(req.query) });
+    res.json({ success: true, data: await listCompanies(req.query, req.user) });
   } catch (error) {
     next(error);
   }
@@ -33,7 +35,7 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const company = await getCompany(req.params.id);
+    const company = await getCompany(req.params.id, req.user);
     if (!company) return res.status(404).json({ success: false, message: "Firma nije pronadjena" });
     res.json({ success: true, data: company });
   } catch (error) {
@@ -41,26 +43,26 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requireWriteAccess, async (req, res, next) => {
   try {
     const data = schema.parse(req.body);
-    res.status(201).json({ success: true, data: await createCompany(data) });
+    res.status(201).json({ success: true, data: await createCompany(data, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requireWriteAccess, async (req, res, next) => {
   try {
-    res.json({ success: true, data: await updateCompany(req.params.id, req.body) });
+    res.json({ success: true, data: await updateCompany(req.params.id, req.body, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requireWriteAccess, async (req, res, next) => {
   try {
-    await deleteCompany(req.params.id);
+    await deleteCompany(req.params.id, req.user);
     res.status(204).end();
   } catch (error) {
     next(error);

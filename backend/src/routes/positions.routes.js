@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { requireWriteAccess } from "../middleware/auth.js";
 import {
   closePosition,
   createPosition,
@@ -12,6 +13,7 @@ import {
 const router = Router();
 const schema = z.object({
   containerNumber: z.string().min(1),
+  organizationId: z.union([z.number(), z.string()]).optional().nullable(),
   companyId: z.union([z.number(), z.string()]).optional().nullable(),
   title: z.string().optional().nullable(),
   openingDate: z.string().optional(),
@@ -27,7 +29,7 @@ const schema = z.object({
 
 router.get("/", async (req, res, next) => {
   try {
-    res.json({ success: true, data: await listPositions(req.query) });
+    res.json({ success: true, data: await listPositions(req.query, req.user) });
   } catch (error) {
     next(error);
   }
@@ -35,7 +37,7 @@ router.get("/", async (req, res, next) => {
 
 router.get("/container/:containerNumber", async (req, res, next) => {
   try {
-    const position = await getPositionByContainer(req.params.containerNumber);
+    const position = await getPositionByContainer(req.params.containerNumber, req.user);
     if (!position) return res.status(404).json({ success: false, message: "Pozicija nije pronadjena" });
     res.json({ success: true, data: position });
   } catch (error) {
@@ -45,7 +47,7 @@ router.get("/container/:containerNumber", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const position = await getPosition(req.params.id);
+    const position = await getPosition(req.params.id, req.user);
     if (!position) return res.status(404).json({ success: false, message: "Pozicija nije pronadjena" });
     res.json({ success: true, data: position });
   } catch (error) {
@@ -53,26 +55,26 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requireWriteAccess, async (req, res, next) => {
   try {
     const data = schema.parse(req.body);
-    res.status(201).json({ success: true, data: await createPosition(data) });
+    res.status(201).json({ success: true, data: await createPosition(data, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requireWriteAccess, async (req, res, next) => {
   try {
-    res.json({ success: true, data: await updatePosition(req.params.id, req.body) });
+    res.json({ success: true, data: await updatePosition(req.params.id, req.body, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.post("/:id/close", async (req, res, next) => {
+router.post("/:id/close", requireWriteAccess, async (req, res, next) => {
   try {
-    res.json({ success: true, data: await closePosition(req.params.id) });
+    res.json({ success: true, data: await closePosition(req.params.id, req.user) });
   } catch (error) {
     next(error);
   }

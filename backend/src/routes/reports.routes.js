@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { dashboardSummary, profitByCompany, profitByContainer } from "../services/reports.service.js";
+import { dashboardSummary, profitByCompany, profitByContainer, profitByPeriod } from "../services/reports.service.js";
 import { toCsv } from "../utils/csv.js";
 
 const router = Router();
@@ -15,7 +15,7 @@ function sendMaybeCsv(req, res, rows, filename) {
 
 router.get("/dashboard", async (req, res, next) => {
   try {
-    res.json({ success: true, data: await dashboardSummary() });
+    res.json({ success: true, data: await dashboardSummary(req.user) });
   } catch (error) {
     next(error);
   }
@@ -23,7 +23,7 @@ router.get("/dashboard", async (req, res, next) => {
 
 router.get("/profit-by-container", async (req, res, next) => {
   try {
-    sendMaybeCsv(req, res, await profitByContainer(req.query), "profit-po-kontejneru");
+    sendMaybeCsv(req, res, await profitByContainer(req.query, req.user), "profit-po-kontejneru");
   } catch (error) {
     next(error);
   }
@@ -31,7 +31,15 @@ router.get("/profit-by-container", async (req, res, next) => {
 
 router.get("/profit-by-company", async (req, res, next) => {
   try {
-    sendMaybeCsv(req, res, await profitByCompany(req.query), "profit-po-firmi");
+    sendMaybeCsv(req, res, await profitByCompany(req.query, req.user), "profit-po-firmi");
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/profit-by-period", async (req, res, next) => {
+  try {
+    sendMaybeCsv(req, res, await profitByPeriod(req.query, req.user), "profit-po-periodu");
   } catch (error) {
     next(error);
   }

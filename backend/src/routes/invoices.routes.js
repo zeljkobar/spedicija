@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { requireWriteAccess } from "../middleware/auth.js";
 import { createInvoice, deleteInvoice, listInvoices, updateInvoice } from "../services/invoices.service.js";
 
 const router = Router();
@@ -21,33 +22,33 @@ const schema = z.object({
 
 router.get("/", async (req, res, next) => {
   try {
-    res.json({ success: true, data: await listInvoices(req.query) });
+    res.json({ success: true, data: await listInvoices(req.query, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requireWriteAccess, async (req, res, next) => {
   try {
     const data = schema.parse(req.body);
-    const result = await createInvoice(data);
+    const result = await createInvoice(data, req.user);
     res.status(201).json({ success: true, ...result });
   } catch (error) {
     next(error);
   }
 });
 
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", requireWriteAccess, async (req, res, next) => {
   try {
-    res.json({ success: true, data: await updateInvoice(req.params.id, req.body) });
+    res.json({ success: true, data: await updateInvoice(req.params.id, req.body, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", requireWriteAccess, async (req, res, next) => {
   try {
-    await deleteInvoice(req.params.id);
+    await deleteInvoice(req.params.id, req.user);
     res.status(204).end();
   } catch (error) {
     next(error);

@@ -98,6 +98,52 @@ main {
   margin-bottom: 22px;
 }
 
+.topbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.user-chip {
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  border-radius: 999px;
+  color: #075985;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 11px;
+}
+
+.login-page {
+  align-items: center;
+  background: #eef2f6;
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  place-items: center;
+}
+
+.login-panel {
+  background: white;
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+  max-width: 420px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.login-brand {
+  background: #132238;
+  color: #f8fafc;
+  margin: 0;
+  padding: 22px;
+}
+
+.password-panel {
+  margin-bottom: 18px;
+  max-width: 520px;
+}
+
 h1,
 h2,
 h3,
@@ -370,6 +416,14 @@ tbody tr:hover {
   gap: 8px;
 }
 
+.muted-list {
+  color: #64748b;
+  display: grid;
+  font-size: 12px;
+  gap: 3px;
+  margin-top: 6px;
+}
+
 .small-action {
   align-items: center;
   background: #ffffff;
@@ -400,6 +454,11 @@ tbody tr:hover {
   align-items: center;
   display: flex;
   justify-content: space-between;
+}
+
+.box-action {
+  border-top: 1px solid #e5ebf2;
+  padding: 14px 16px;
 }
 
 .edit-grid {
@@ -442,10 +501,16 @@ tbody tr:hover {
   align-items: center;
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .report-actions select {
   min-width: 170px;
+}
+
+.report-actions input {
+  min-width: 150px;
+  width: auto;
 }
 
 .context {
@@ -477,5 +542,15 @@ tbody tr:hover {
 
   .mini-stats {
     grid-template-columns: 1fr;
+  }
+
+  .topbar,
+  .topbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar-actions {
+    margin-top: 14px;
   }
 }

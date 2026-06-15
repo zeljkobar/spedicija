@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { requireWriteAccess } from "../middleware/auth.js";
 import { createCost, listCosts } from "../services/costs.service.js";
 
 const router = Router();
@@ -14,15 +15,15 @@ const schema = z.object({
 
 router.get("/", async (req, res, next) => {
   try {
-    res.json({ success: true, data: await listCosts(req.query) });
+    res.json({ success: true, data: await listCosts(req.query, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requireWriteAccess, async (req, res, next) => {
   try {
-    res.status(201).json({ success: true, data: await createCost(schema.parse(req.body)) });
+    res.status(201).json({ success: true, data: await createCost(schema.parse(req.body), req.user) });
   } catch (error) {
     next(error);
   }

@@ -1,5 +1,13 @@
 import { Router } from "express";
-import { dashboardSummary, profitByCompany, profitByContainer, profitByPeriod } from "../services/reports.service.js";
+import {
+  customerInvoices,
+  dashboardSummary,
+  openPositions,
+  profitByCompany,
+  profitByContainer,
+  profitByPeriod,
+  supplierInvoices
+} from "../services/reports.service.js";
 import { toCsv } from "../utils/csv.js";
 
 const router = Router();
@@ -40,6 +48,30 @@ router.get("/profit-by-company", async (req, res, next) => {
 router.get("/profit-by-period", async (req, res, next) => {
   try {
     sendMaybeCsv(req, res, await profitByPeriod(req.query, req.user), "profit-po-periodu");
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/open-positions", async (req, res, next) => {
+  try {
+    sendMaybeCsv(req, res, await openPositions(req.query, req.user), "otvorene-pozicije");
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/supplier-invoices", async (req, res, next) => {
+  try {
+    sendMaybeCsv(req, res, await supplierInvoices(req.query, req.user), "racuni-dobavljaca");
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/customer-invoices", async (req, res, next) => {
+  try {
+    sendMaybeCsv(req, res, await customerInvoices(req.query, req.user), "racuni-kupaca");
   } catch (error) {
     next(error);
   }

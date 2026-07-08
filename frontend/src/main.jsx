@@ -35,8 +35,34 @@ const REPORT_CONFIG = {
     title: "Profit po periodu",
     path: "/reports/profit-by-period",
     filename: "profit-po-periodu.csv"
+  },
+  open: {
+    title: "Otvorene pozicije",
+    path: "/reports/open-positions",
+    filename: "otvorene-pozicije.csv"
   }
 };
+const KIF_KUF_CONFIG = {
+  kuf: {
+    title: "KUF - racuni dobavljaca",
+    companyLabel: "Dobavljac",
+    path: "/reports/supplier-invoices",
+    filename: "kuf-racuni-dobavljaca.csv"
+  },
+  kif: {
+    title: "KIF - racuni kupaca",
+    companyLabel: "Kupac",
+    path: "/reports/customer-invoices",
+    filename: "kif-racuni-kupaca.csv"
+  }
+};
+const PAYMENT_METHODS = [
+  ["ZIRO_RACUN", "Ziro racun"],
+  ["GOTOVINA", "Gotovina"],
+  ["KARTICA", "Kartica"],
+  ["KOMPENZACIJA", "Kompenzacija"],
+  ["OSTALO", "Ostalo"]
+];
 
 function authHeaders() {
   const token = localStorage.getItem(TOKEN_KEY);
@@ -183,6 +209,7 @@ function App() {
     ["positions", "Pozicije", Container],
     ["entry", "Novi unos", FilePlus2],
     ["reports", "Izvjestaji", FileText],
+    ["kifkuf", "KIF/KUF", FileText],
     ...(user?.role === "ADMIN" ? [["team", "Radnici", Users]] : []),
     ...(user?.role === "SUPER_ADMIN" ? [["admin", "Admin", Building2]] : [])
   ];
@@ -240,6 +267,7 @@ function App() {
         )}
         {active === "entry" && <NewEntryWizard companies={companies} positions={positions} organizations={organizations} user={user} onDone={loadAll} />}
         {active === "reports" && <Reports rows={reports} positions={positions} companies={companies} organizations={organizations} user={user} onSaved={loadAll} />}
+        {active === "kifkuf" && <KifKuf companies={companies} organizations={organizations} user={user} />}
         {active === "team" && user?.role === "ADMIN" && <TeamPanel user={user} />}
         {active === "admin" && user?.role === "SUPER_ADMIN" && (
           <AdminPanel organizations={organizations} onSaved={loadAll} />
@@ -1167,20 +1195,75 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
   const [companyId, setCompanyId] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [dateBasis, setDateBasis] = useState("openingDate");
   const [rows, setRows] = useState(initialRows);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const isPositionReport = ["container", "open"].includes(type);
 
   const params = useMemo(() => {
     const next = new URLSearchParams();
-    if (status !== "SVE") next.set("status", status);
+    if (status !== "SVE" && type !== "open") next.set("status", status);
     if (organizationId) next.set("organizationId", organizationId);
     if (companyId) next.set("companyId", companyId);
     if (dateFrom) next.set("dateFrom", dateFrom);
     if (dateTo) next.set("dateTo", dateTo);
+    if (type === "period") next.set("dateBasis", dateBasis);
     return next;
-  }, [status, organizationId, companyId, dateFrom, dateTo]);
+  }, [status, organizationId, companyId, dateFrom, dateTo, dateBasis, type]);
+
+  const columns = useMemo(() => {
+    if (type === "company") {
+      return [
+        ["company", "Firma"],
+        ["positionsCount", "Pozicija"],
+        ["totalRevenue", "Prihodi", money],
+        ["totalCosts", "Troskovi", money],
+        ["profit", "Profit", money],
+        ["margin", "Marza", (value) => `${value}%`]
+      ];
+    }
+
+    if (type === "period") {
+      return [
+        ["period", "Period"],
+        ["positionsCount", "Pozicija"],
+        ["totalRevenue", "Prihodi", money],
+        ["totalCosts", "Troskovi", money],
+        ["profit", "Profit", money],
+        ["margin", "Marza", (value) => `${value}%`]
+      ];
+    }
+
+    if (type === "open") {
+      return [
+        ["containerNumber", "Kontejner"],
+        ["company", "Firma"],
+        ["status", "Status"],
+        ["openingDate", "Otvorena"],
+        ["ageDays", "Dana"],
+        ["totalRevenue", "Prihodi", money],
+        ["totalCosts", "Troskovi", money],
+        ["profit", "Profit", money],
+        ["margin", "Marza", (value) => `${value}%`]
+      ];
+    }
+
+    return [
+      ["containerNumber", "Kontejner"],
+      ["company", "Firma"],
+      ["status", "Status"],
+      ["totalRevenue", "Prihodi", money],
+      ["totalCosts", "Troskovi", money],
+      ["profit", "Profit", money],
+      ["margin", "Marza", (value) => `${value}%`]
+    ];
+  }, [type]);
+
+  const reportDescription = isPositionReport
+      ? "Klikni na red za detalje pozicije, ulaznih i izlaznih racuna."
+      : "Pregled zbirnih prihoda, troskova i profita.";
 
   useEffect(() => {
     let activeRequest = true;
@@ -1247,13 +1330,22 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
       <div className="panel-heading">
         <div>
           <h2>{REPORT_CONFIG[type].title}</h2>
-          <p>{type === "container" ? "Klikni na red za detalje ulaznih i izlaznih racuna." : "Pregled zbirnih prihoda, troskova i profita."}</p>
+          <p>{reportDescription}</p>
         </div>
         <div className="report-actions">
-          <select value={type} onChange={(event) => { setType(event.target.value); setSelected(null); }}>
+          <select
+            value={type}
+            onChange={(event) => {
+              const nextType = event.target.value;
+              setType(nextType);
+              setSelected(null);
+              setDateBasis(nextType === "period" ? "openingDate" : "invoiceDate");
+            }}
+          >
             <option value="container">Po kontejneru</option>
             <option value="company">Po firmi</option>
             <option value="period">Po periodu</option>
+            <option value="open">Otvorene pozicije</option>
           </select>
           {user?.role === "SUPER_ADMIN" ? (
             <select value={organizationId} onChange={(event) => { setOrganizationId(event.target.value); setCompanyId(""); }}>
@@ -1263,15 +1355,17 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
               ))}
             </select>
           ) : null}
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="SVE">Sve pozicije</option>
-            <option value="OTVORENA">Otvorene</option>
-            <option value="U_TOKU">U toku</option>
-            <option value="FAKTURISANA">Fakturisane</option>
-            <option value="NAPLACENA">Naplacene</option>
-            <option value="ZATVORENA">Zatvorene</option>
-            <option value="STORNIRANA">Stornirane</option>
-          </select>
+          {type !== "open" ? (
+            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="SVE">Sve pozicije</option>
+              <option value="OTVORENA">Otvorene</option>
+              <option value="U_TOKU">U toku</option>
+              <option value="FAKTURISANA">Fakturisane</option>
+              <option value="NAPLACENA">Naplacene</option>
+              <option value="ZATVORENA">Zatvorene</option>
+              <option value="STORNIRANA">Stornirane</option>
+            </select>
+          ) : null}
           <select value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
             <option value="">Sve firme</option>
             {companies
@@ -1280,6 +1374,14 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
               <option value={company.id} key={company.id}>{company.name}</option>
             ))}
           </select>
+          {type === "period" ? (
+            <select value={dateBasis} onChange={(event) => setDateBasis(event.target.value)}>
+              <option value="openingDate">Datum otvaranja</option>
+              <option value="invoiceDate">Datum fakture</option>
+              <option value="dueDate">Datum dospijeca</option>
+              <option value="closingDate">Datum zatvaranja</option>
+            </select>
+          ) : null}
           <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} title="Od datuma" />
           <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} title="Do datuma" />
           <button className="secondary" onClick={exportCsv}>
@@ -1291,57 +1393,17 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
       <table>
         <thead>
           <tr>
-            {type === "container" ? (
-              <>
-                <th>Kontejner</th>
-                <th>Firma</th>
-                <th>Status</th>
-              </>
-            ) : null}
-            {type === "company" ? (
-              <>
-                <th>Firma</th>
-                <th>Pozicija</th>
-              </>
-            ) : null}
-            {type === "period" ? (
-              <>
-                <th>Period</th>
-                <th>Pozicija</th>
-              </>
-            ) : null}
-            <th>Prihodi</th>
-            <th>Troskovi</th>
-            <th>Profit</th>
-            <th>Marza</th>
+            {columns.map(([key, label]) => (
+              <th key={key}>{label}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.positionId || row.company || row.period} onClick={() => type === "container" ? setSelected(row) : null}>
-              {type === "container" ? (
-                <>
-                  <td>{row.containerNumber}</td>
-                  <td>{row.company}</td>
-                  <td>{row.status}</td>
-                </>
-              ) : null}
-              {type === "company" ? (
-                <>
-                  <td>{row.company}</td>
-                  <td>{row.positionsCount}</td>
-                </>
-              ) : null}
-              {type === "period" ? (
-                <>
-                  <td>{row.period}</td>
-                  <td>{row.positionsCount}</td>
-                </>
-              ) : null}
-              <td>{money(row.totalRevenue)}</td>
-              <td>{money(row.totalCosts)}</td>
-              <td>{money(row.profit)}</td>
-              <td>{row.margin}%</td>
+            <tr key={row.positionId || row.invoiceId || row.company || row.period} onClick={() => isPositionReport ? setSelected(row) : null}>
+              {columns.map(([key, , format]) => (
+                <td key={key}>{format ? format(row[key]) : row[key]}</td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -1349,6 +1411,372 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
       {loading ? <Empty text="Ucitavanje izvjestaja..." /> : null}
       {error ? <div className="alert inline-alert">{error}</div> : null}
       {!loading && !rows.length ? <Empty text="Nema podataka za izabrani filter." /> : null}
+    </section>
+  );
+}
+
+function KifKuf({ companies, organizations, user }) {
+  const [book, setBook] = useState("kuf");
+  const [organizationId, setOrganizationId] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [dateBasis, setDateBasis] = useState("invoiceDate");
+  const [rows, setRows] = useState([]);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const config = KIF_KUF_CONFIG[book];
+
+  const params = useMemo(() => {
+    const next = new URLSearchParams();
+    if (organizationId) next.set("organizationId", organizationId);
+    if (companyId) next.set("companyId", companyId);
+    if (dateFrom) next.set("dateFrom", dateFrom);
+    if (dateTo) next.set("dateTo", dateTo);
+    next.set("dateBasis", dateBasis);
+    return next;
+  }, [organizationId, companyId, dateFrom, dateTo, dateBasis]);
+
+  const filteredCompanies = useMemo(
+    () => companies.filter((company) => !organizationId || company.organizationId === Number(organizationId)),
+    [companies, organizationId]
+  );
+
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (acc, row) => {
+          acc.withoutVat += Number(row.amountWithoutVat || 0);
+          acc.vat += Number(row.vatAmount || 0);
+          acc.withVat += Number(row.amountWithVat || 0);
+          acc.accounting += Number(row.accountingAmount || 0);
+          acc.paid += Number(row.paidAmount || 0);
+          acc.remaining += Number(row.remainingAmount || 0);
+          return acc;
+        },
+        { withoutVat: 0, vat: 0, withVat: 0, accounting: 0, paid: 0, remaining: 0 }
+      ),
+    [rows]
+  );
+
+  async function loadRows() {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await request(`${config.path}?${params.toString()}`);
+      setRows(result.data);
+      setSelectedInvoice((current) =>
+        current ? result.data.find((row) => row.invoiceId === current.invoiceId) || null : null
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let activeRequest = true;
+    setLoading(true);
+    setError("");
+    request(`${config.path}?${params.toString()}`)
+      .then((result) => {
+        if (activeRequest) {
+          setRows(result.data);
+          setSelectedInvoice((current) =>
+            current ? result.data.find((row) => row.invoiceId === current.invoiceId) || null : null
+          );
+        }
+      })
+      .catch((err) => {
+        if (activeRequest) setError(err.message);
+      })
+      .finally(() => {
+        if (activeRequest) setLoading(false);
+      });
+    return () => {
+      activeRequest = false;
+    };
+  }, [config.path, params]);
+
+  async function exportCsv() {
+    const csvParams = new URLSearchParams(params);
+    csvParams.set("format", "csv");
+    const response = await fetch(`${API}${config.path}?${csvParams.toString()}`, {
+      headers: authHeaders()
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({ message: "CSV export nije uspio." }));
+      setError(result.message || "CSV export nije uspio.");
+      return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = config.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="stack">
+      <section className="stats-grid">
+        <Stat label="Racuna" value={rows.length} />
+        <Stat label="Bez PDV" value={money(totals.withoutVat)} />
+        <Stat label="PDV" value={money(totals.vat)} />
+        <Stat label="Sa PDV" value={money(totals.withVat)} />
+        <Stat label="Za obracun" value={money(totals.accounting)} />
+        <Stat label="Placeno" value={money(totals.paid)} />
+        <Stat label="Dug" value={money(totals.remaining)} />
+      </section>
+
+      {selectedInvoice ? (
+        <InvoicePaymentPanel
+          invoice={selectedInvoice}
+          onClose={() => setSelectedInvoice(null)}
+          onChanged={loadRows}
+        />
+      ) : null}
+
+      <section className="panel kifkuf-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>{config.title}</h2>
+            <p>Izaberi firmu i vidi sve racune unesene pod tim dobavljacem ili kupcem.</p>
+          </div>
+          <div className="report-actions">
+            <select value={book} onChange={(event) => { setBook(event.target.value); setCompanyId(""); }}>
+              <option value="kuf">KUF - dobavljaci</option>
+              <option value="kif">KIF - kupci</option>
+            </select>
+            {user?.role === "SUPER_ADMIN" ? (
+              <select value={organizationId} onChange={(event) => { setOrganizationId(event.target.value); setCompanyId(""); }}>
+                <option value="">Sve spedicije</option>
+                {organizations.map((organization) => (
+                  <option value={organization.id} key={organization.id}>{organization.name}</option>
+                ))}
+              </select>
+            ) : null}
+            <select value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+              <option value="">Sve firme</option>
+              {filteredCompanies.map((company) => (
+                <option value={company.id} key={company.id}>{company.name}</option>
+              ))}
+            </select>
+            <select value={dateBasis} onChange={(event) => setDateBasis(event.target.value)}>
+              <option value="invoiceDate">Datum fakture</option>
+              <option value="dueDate">Datum dospijeca</option>
+            </select>
+            <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} title="Od datuma" />
+            <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} title="Do datuma" />
+            <button className="secondary" onClick={exportCsv}>
+              <Download size={18} />
+              CSV
+            </button>
+          </div>
+        </div>
+
+        <table className="kifkuf-table">
+          <thead>
+            <tr>
+              <th>Broj</th>
+              <th>{config.companyLabel}</th>
+              <th>Kontejner</th>
+              <th>Datum</th>
+              <th>Dospijece</th>
+              <th>Sa PDV</th>
+              <th>Za obracun</th>
+              <th>Placeno</th>
+              <th>Dug</th>
+              <th>Status</th>
+              <th>Akcije</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.invoiceId}>
+                <td><strong>{row.invoiceNumber}</strong></td>
+                <td>{row.company}</td>
+                <td>{row.containerNumber}</td>
+                <td>{row.invoiceDate}</td>
+                <td>{row.dueDate}</td>
+                <td>{money(row.amountWithVat)}</td>
+                <td>{money(row.accountingAmount)}</td>
+                <td>{money(row.paidAmount)}</td>
+                <td>{money(row.remainingAmount)}</td>
+                <td><span className="badge">{row.paymentStatus}</span></td>
+                <td>
+                  <button className="small-action" onClick={() => setSelectedInvoice(row)}>
+                    Placanje
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {loading ? <Empty text="Ucitavanje racuna..." /> : null}
+        {error ? <div className="alert inline-alert">{error}</div> : null}
+        {!loading && !rows.length ? <Empty text="Nema racuna za izabrane filtere." /> : null}
+      </section>
+    </div>
+  );
+}
+
+function InvoicePaymentPanel({ invoice, onClose, onChanged }) {
+  const [details, setDetails] = useState(null);
+  const [form, setForm] = useState({
+    paymentDate: new Date().toISOString().slice(0, 10),
+    amount: invoice.remainingAmount || invoice.accountingAmount || "",
+    method: "ZIRO_RACUN",
+    note: ""
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadPayments() {
+    setError("");
+    try {
+      const result = await request(`/invoices/${invoice.invoiceId}/payments`);
+      setDetails(result.data);
+      setForm((current) => ({
+        ...current,
+        amount: result.data.invoice.remainingAmount || invoice.remainingAmount || ""
+      }));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  useEffect(() => {
+    loadPayments();
+  }, [invoice.invoiceId]);
+
+  async function save(event) {
+    event.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      await request(`/invoices/${invoice.invoiceId}/payments`, {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      setForm({
+        paymentDate: new Date().toISOString().slice(0, 10),
+        amount: "",
+        method: "ZIRO_RACUN",
+        note: ""
+      });
+      await loadPayments();
+      await onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removePayment(payment) {
+    const confirmed = window.confirm(`Obrisati placanje od ${money(payment.amount)}?`);
+    if (!confirmed) return;
+
+    setError("");
+    try {
+      await request(`/invoice-payments/${payment.id}`, { method: "DELETE" });
+      await loadPayments();
+      await onChanged();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  const summary = details?.invoice || invoice;
+
+  return (
+    <section className="panel payment-panel">
+      <div className="panel-heading">
+        <div>
+          <h2>Placanje racuna {invoice.invoiceNumber}</h2>
+          <p>{invoice.company} - {invoice.containerNumber}</p>
+        </div>
+        <button className="small-action" onClick={onClose}>Zatvori</button>
+      </div>
+
+      <div className="mini-stats payment-summary">
+        <Stat label="Ukupno" value={money(summary.totalAmount || invoice.accountingAmount)} />
+        <Stat label="Placeno" value={money(summary.paidAmount)} />
+        <Stat label="Dug" value={money(summary.remainingAmount)} />
+      </div>
+
+      {error ? <div className="alert inline-alert">{error}</div> : null}
+
+      <form className="edit-form" onSubmit={save}>
+        <div className="edit-grid payment-grid">
+          <label>
+            Datum placanja
+            <input type="date" value={form.paymentDate} onChange={(e) => setForm({ ...form, paymentDate: e.target.value })} required />
+          </label>
+          <label>
+            Iznos
+            <input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
+          </label>
+          <label>
+            Nacin placanja
+            <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
+              {PAYMENT_METHODS.map(([value, label]) => (
+                <option value={value} key={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Napomena
+            <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+          </label>
+        </div>
+        <div className="form-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setForm({ ...form, amount: summary.remainingAmount || invoice.remainingAmount || "" })}
+          >
+            Placeno u cijelosti
+          </button>
+          <button className="primary" disabled={saving}>{saving ? "Snimanje..." : "Snimi placanje"}</button>
+        </div>
+      </form>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Iznos</th>
+            <th>Nacin</th>
+            <th>Napomena</th>
+            <th>Akcije</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(details?.payments || []).map((payment) => (
+            <tr key={payment.id}>
+              <td>{payment.paymentDate}</td>
+              <td>{money(payment.amount)}</td>
+              <td>{PAYMENT_METHODS.find(([value]) => value === payment.method)?.[1] || payment.method}</td>
+              <td>{payment.note}</td>
+              <td>
+                <button className="small-action danger" onClick={() => removePayment(payment)}>
+                  Obrisi
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {details && !details.payments.length ? <Empty text="Nema evidentiranih placanja za ovaj racun." /> : null}
     </section>
   );
 }

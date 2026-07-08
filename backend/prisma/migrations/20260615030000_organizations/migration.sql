@@ -1,5 +1,6 @@
 -- Add SUPER_ADMIN role
 ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS 'SUPER_ADMIN';
+COMMIT;
 
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "Organization" (

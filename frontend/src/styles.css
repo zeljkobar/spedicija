@@ -467,6 +467,50 @@ tbody tr:hover {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.payment-panel {
+  overflow-x: auto;
+}
+
+.payment-summary {
+  margin: 18px;
+}
+
+.payment-grid {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.kifkuf-panel .panel-heading {
+  align-items: start;
+  gap: 18px;
+}
+
+.kifkuf-panel .report-actions {
+  flex: 1;
+}
+
+.kifkuf-table {
+  font-size: 14px;
+  min-width: 1180px;
+}
+
+.kifkuf-table th,
+.kifkuf-table td {
+  padding: 9px 10px;
+}
+
+.kifkuf-table .small-action {
+  min-height: 30px;
+  padding: 6px 9px;
+}
+
+.kifkuf-table th:last-child,
+.kifkuf-table td:last-child {
+  background: white;
+  box-shadow: -8px 0 12px rgba(15, 23, 42, 0.06);
+  position: sticky;
+  right: 0;
+}
+
 .choice-grid {
   display: grid;
   gap: 18px;
@@ -506,6 +550,7 @@ tbody tr:hover {
 
 .report-actions select {
   min-width: 170px;
+  width: auto;
 }
 
 .report-actions input {

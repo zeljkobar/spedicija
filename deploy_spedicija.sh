@@ -19,6 +19,11 @@ npm ci --prefix backend
 echo "==> Install frontend dependencies"
 npm ci --prefix frontend
 
+echo "==> Apply database migrations"
+cd backend
+npm exec prisma -- migrate deploy
+cd ..
+
 echo "==> Generate Prisma Client"
 npm run prisma:generate
 

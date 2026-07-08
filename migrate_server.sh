@@ -4,9 +4,11 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "==> Apply database migrations"
-npm exec --prefix backend prisma -- migrate deploy
+cd backend
+npm exec prisma -- migrate deploy
 
 echo "==> Generate Prisma Client"
-npm run prisma:generate
+npm exec prisma -- generate
+cd ..
 
 echo "==> Migrations finished"

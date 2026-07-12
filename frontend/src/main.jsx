@@ -763,6 +763,7 @@ function ClosePositionButton({ position, onSaved, onClosed }) {
 
 function InvoiceTable({ title, rows, tone, companies, onSaved }) {
   const [editing, setEditing] = useState(null);
+  const [paymentInvoice, setPaymentInvoice] = useState(null);
   const [error, setError] = useState("");
 
   async function removeInvoice(invoice) {
@@ -798,6 +799,8 @@ function InvoiceTable({ title, rows, tone, companies, onSaved }) {
               <th>PDV</th>
               <th>Sa PDV</th>
               <th>Za obracun</th>
+              <th>Placeno</th>
+              <th>Dug</th>
               <th>Status</th>
               <th>Akcije</th>
             </tr>
@@ -812,9 +815,14 @@ function InvoiceTable({ title, rows, tone, companies, onSaved }) {
                 <td>{money(invoice.vatAmount)}</td>
                 <td>{money(invoice.amountWithVat)}</td>
                 <td>{money(invoiceAmount(invoice))}</td>
-                <td><span className="badge">{invoice.paymentStatus}</span></td>
+                <td>{money(invoice.paidAmount)}</td>
+                <td>{money(invoice.remainingAmount)}</td>
+                <td><span className="badge">{invoice.computedPaymentStatus || invoice.paymentStatus}</span></td>
                 <td>
                   <div className="row-actions">
+                    <button className="small-action" onClick={() => setPaymentInvoice(invoice)} title="Evidentiraj placanje">
+                      Placanje
+                    </button>
                     <button className="small-action" onClick={() => setEditing(invoice)} title="Izmijeni fakturu">
                       <Pencil size={15} />
                       Edit
@@ -837,6 +845,20 @@ function InvoiceTable({ title, rows, tone, companies, onSaved }) {
           onCancel={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null);
+            await onSaved();
+          }}
+        />
+      ) : null}
+      {paymentInvoice ? (
+        <InvoicePaymentPanel
+          invoice={{
+            ...paymentInvoice,
+            invoiceId: paymentInvoice.id,
+            company: paymentInvoice.company?.name || "",
+            accountingAmount: invoiceAmount(paymentInvoice)
+          }}
+          onClose={() => setPaymentInvoice(null)}
+          onChanged={async () => {
             await onSaved();
           }}
         />

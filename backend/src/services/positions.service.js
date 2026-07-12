@@ -1,13 +1,24 @@
 import { prisma } from "../db.js";
 import { tenantWhere } from "../middleware/auth.js";
+import { paymentSummary } from "./invoicePayments.service.js";
 import { buildFinancialSummary } from "../utils/financialSummary.js";
 import { normalizeContainerNumber } from "../utils/normalizeContainerNumber.js";
 
 const includeDetails = {
   company: true,
-  invoices: { include: { company: true }, orderBy: { invoiceDate: "desc" } },
+  invoices: { include: { company: true, payments: true }, orderBy: { invoiceDate: "desc" } },
   additionalCosts: { orderBy: { costDate: "desc" } }
 };
+
+function withInvoicePayments(invoice) {
+  const summary = paymentSummary(invoice);
+  return {
+    ...invoice,
+    paidAmount: summary.paidAmount,
+    remainingAmount: summary.remainingAmount,
+    computedPaymentStatus: summary.computedPaymentStatus
+  };
+}
 
 function organizationIdForCreate(data, user) {
   if (user?.role === "SUPER_ADMIN") return data.organizationId ? Number(data.organizationId) : null;
@@ -18,6 +29,7 @@ export function withSummary(position) {
   if (!position) return null;
   return {
     ...position,
+    invoices: (position.invoices || []).map(withInvoicePayments),
     financial: buildFinancialSummary(position)
   };
 }

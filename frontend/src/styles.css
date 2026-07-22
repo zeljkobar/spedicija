@@ -207,6 +207,13 @@ h1 {
   margin-bottom: 18px;
 }
 
+.position-meta {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 18px;
+}
+
 .stats-grid {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
@@ -511,6 +518,49 @@ tbody tr:hover {
   right: 0;
 }
 
+.lookup-heading select {
+  max-width: 260px;
+}
+
+.lookup-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.lookup-tabs button {
+  background: #ffffff;
+  border: 1px solid #d7dee8;
+  border-radius: 7px;
+  color: #24364b;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.lookup-tabs button.active,
+.lookup-tabs button:hover {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #075985;
+}
+
+.badge.inactive {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.check-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.check-row input {
+  min-height: auto;
+  width: auto;
+}
+
 .choice-grid {
   display: grid;
   gap: 18px;
@@ -577,6 +627,7 @@ tbody tr:hover {
   .stack,
   .choice-grid,
   .stats-grid,
+  .position-meta,
   .edit-grid {
     grid-template-columns: 1fr;
   }

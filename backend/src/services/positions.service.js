@@ -6,6 +6,9 @@ import { normalizeContainerNumber } from "../utils/normalizeContainerNumber.js";
 
 const includeDetails = {
   company: true,
+  containerTypeRef: true,
+  carrierRef: true,
+  salesAgentRef: true,
   invoices: { include: { company: true, payments: true }, orderBy: { invoiceDate: "desc" } },
   additionalCosts: { orderBy: { costDate: "desc" } }
 };
@@ -23,6 +26,18 @@ function withInvoicePayments(invoice) {
 function organizationIdForCreate(data, user) {
   if (user?.role === "SUPER_ADMIN") return data.organizationId ? Number(data.organizationId) : null;
   return Number(user.organizationId);
+}
+
+async function getRequiredLookup(model, id, organizationId, message) {
+  const item = await model.findFirst({
+    where: { id: Number(id), organizationId, active: true }
+  });
+  if (!item) {
+    const error = new Error(message);
+    error.status = 400;
+    throw error;
+  }
+  return item;
 }
 
 export function withSummary(position) {
@@ -93,12 +108,27 @@ export async function createPosition(data, user) {
     throw error;
   }
 
+  const [containerType, carrier, salesAgent] = await Promise.all([
+    getRequiredLookup(prisma.containerType, data.containerTypeId, organizationId, "Izaberi validan tip kontejnera."),
+    getRequiredLookup(prisma.carrier, data.carrierId, organizationId, "Izaberi validnog brodara."),
+    getRequiredLookup(prisma.salesAgent, data.salesAgentId, organizationId, "Izaberi validnog komercijalistu.")
+  ]);
+
   return prisma.position.create({
     data: {
       containerNumber,
       organizationId,
       companyId: data.companyId ? Number(data.companyId) : null,
       title: data.title || null,
+      containerTypeId: containerType.id,
+      carrierId: carrier.id,
+      salesAgentId: salesAgent.id,
+      containerType: containerType.name,
+      carrier: carrier.name,
+      salesAgent: salesAgent.name,
+      jci: data.jci,
+      manipulation: data.manipulation || null,
+      goods: data.goods || null,
       openingDate: data.openingDate ? new Date(data.openingDate) : new Date(),
       closingDate: data.closingDate ? new Date(data.closingDate) : null,
       status: data.status || "OTVORENA",

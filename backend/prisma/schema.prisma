@@ -66,6 +66,9 @@ model Organization {
   users     User[]
   companies Company[]
   positions Position[]
+  containerTypes ContainerType[]
+  carriers  Carrier[]
+  salesAgents SalesAgent[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 }
@@ -99,6 +102,18 @@ model Position {
   companyId       Int?
   company         Company?         @relation(fields: [companyId], references: [id])
   title           String?
+  containerTypeId Int?
+  containerTypeRef ContainerType? @relation(fields: [containerTypeId], references: [id])
+  carrierId       Int?
+  carrierRef      Carrier?       @relation(fields: [carrierId], references: [id])
+  salesAgentId    Int?
+  salesAgentRef   SalesAgent?    @relation(fields: [salesAgentId], references: [id])
+  containerType   String?
+  carrier         String?
+  salesAgent      String?
+  jci             String?
+  manipulation    String?
+  goods           String?
   openingDate     DateTime
   closingDate     DateTime?
   status          PositionStatus   @default(OTVORENA)
@@ -114,6 +129,48 @@ model Position {
   updatedAt       DateTime         @updatedAt
 
   @@unique([organizationId, containerNumber])
+}
+
+model ContainerType {
+  id             Int          @id @default(autoincrement())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  active         Boolean      @default(true)
+  note           String?
+  positions      Position[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+}
+
+model Carrier {
+  id             Int          @id @default(autoincrement())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  active         Boolean      @default(true)
+  note           String?
+  positions      Position[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+}
+
+model SalesAgent {
+  id             Int          @id @default(autoincrement())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  active         Boolean      @default(true)
+  note           String?
+  positions      Position[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, name])
 }
 
 model Invoice {

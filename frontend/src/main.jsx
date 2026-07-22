@@ -8,6 +8,7 @@ import {
   Pencil,
   FilePlus2,
   FileText,
+  ListChecks,
   Plus,
   ArrowLeft,
   CheckCircle2,
@@ -63,6 +64,23 @@ const PAYMENT_METHODS = [
   ["KOMPENZACIJA", "Kompenzacija"],
   ["OSTALO", "Ostalo"]
 ];
+const LOOKUP_CONFIG = {
+  containerTypes: {
+    title: "Tipovi kontejnera",
+    singular: "tip kontejnera",
+    empty: "Nema unesenih tipova kontejnera."
+  },
+  carriers: {
+    title: "Brodari",
+    singular: "brodar",
+    empty: "Nema unesenih brodara."
+  },
+  salesAgents: {
+    title: "Komercijalisti",
+    singular: "komercijalista",
+    empty: "Nema unesenih komercijalista."
+  }
+};
 
 function authHeaders() {
   const token = localStorage.getItem(TOKEN_KEY);
@@ -127,6 +145,7 @@ function App() {
   const [organizations, setOrganizations] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [reports, setReports] = useState([]);
+  const [lookups, setLookups] = useState({ containerTypes: [], carriers: [], salesAgents: [] });
   const [selectedPosition, setSelectedPosition] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -137,16 +156,24 @@ function App() {
     setLoading(true);
     setMessage("");
     try {
-      const [companiesRes, positionsRes, dashboardRes, reportRes] = await Promise.all([
+      const [companiesRes, positionsRes, dashboardRes, reportRes, containerTypesRes, carriersRes, salesAgentsRes] = await Promise.all([
         request("/companies"),
         request("/positions"),
         request("/reports/dashboard"),
-        request("/reports/profit-by-container")
+        request("/reports/profit-by-container"),
+        request("/lookups/containerTypes"),
+        request("/lookups/carriers"),
+        request("/lookups/salesAgents")
       ]);
       setCompanies(companiesRes.data);
       setPositions(positionsRes.data);
       setDashboard(dashboardRes.data);
       setReports(reportRes.data);
+      setLookups({
+        containerTypes: containerTypesRes.data,
+        carriers: carriersRes.data,
+        salesAgents: salesAgentsRes.data
+      });
       if ((user?.role || localStorage.getItem("spedicija_role")) === "SUPER_ADMIN") {
         const organizationsRes = await request("/admin/organizations");
         setOrganizations(organizationsRes.data);
@@ -197,6 +224,7 @@ function App() {
     setPositions([]);
     setDashboard(null);
     setReports([]);
+    setLookups({ containerTypes: [], carriers: [], salesAgents: [] });
     setOrganizations([]);
     setSelectedPosition(null);
   }
@@ -210,6 +238,7 @@ function App() {
     ["entry", "Novi unos", FilePlus2],
     ["reports", "Izvjestaji", FileText],
     ["kifkuf", "KIF/KUF", FileText],
+    ...(["ADMIN", "SUPER_ADMIN"].includes(user?.role) ? [["lookups", "Sifrarnici", ListChecks]] : []),
     ...(user?.role === "ADMIN" ? [["team", "Radnici", Users]] : []),
     ...(user?.role === "SUPER_ADMIN" ? [["admin", "Admin", Building2]] : [])
   ];
@@ -265,9 +294,12 @@ function App() {
             onSaved={loadAll}
           />
         )}
-        {active === "entry" && <NewEntryWizard companies={companies} positions={positions} organizations={organizations} user={user} onDone={loadAll} />}
+        {active === "entry" && <NewEntryWizard companies={companies} positions={positions} organizations={organizations} user={user} lookups={lookups} onDone={loadAll} />}
         {active === "reports" && <Reports rows={reports} positions={positions} companies={companies} organizations={organizations} user={user} onSaved={loadAll} />}
         {active === "kifkuf" && <KifKuf companies={companies} organizations={organizations} user={user} />}
+        {active === "lookups" && ["ADMIN", "SUPER_ADMIN"].includes(user?.role) && (
+          <LookupsPanel lookups={lookups} organizations={organizations} user={user} onSaved={loadAll} />
+        )}
         {active === "team" && user?.role === "ADMIN" && <TeamPanel user={user} />}
         {active === "admin" && user?.role === "SUPER_ADMIN" && (
           <AdminPanel organizations={organizations} onSaved={loadAll} />
@@ -591,6 +623,15 @@ function PositionDetails({ position, companies, onSaved, onClosed }) {
           <p>{position.company?.name || "Bez firme"} · {position.status}</p>
         </div>
         {!isClosed ? <ClosePositionButton position={position} onSaved={onSaved} onClosed={onClosed} /> : null}
+      </div>
+
+      <div className="position-meta">
+        <Stat label="Tip kontejnera" value={position.containerType || "-"} />
+        <Stat label="Brodar" value={position.carrier || "-"} />
+        <Stat label="Komercijalista" value={position.salesAgent || "-"} />
+        <Stat label="JCI" value={position.jci || "-"} />
+        <Stat label="Manipulacija" value={position.manipulation || "-"} />
+        <Stat label="Roba" value={position.goods || "-"} />
       </div>
 
       <div className="mini-stats">
@@ -987,7 +1028,7 @@ function QuickInvoice({ position, companies, onSaved }) {
   );
 }
 
-function NewEntryWizard({ companies, positions, organizations, user, onDone }) {
+function NewEntryWizard({ companies, positions, organizations, user, lookups, onDone }) {
   const [mode, setMode] = useState("");
   const [position, setPosition] = useState(null);
   const [search, setSearch] = useState("");
@@ -1024,7 +1065,7 @@ function NewEntryWizard({ companies, positions, organizations, user, onDone }) {
   }
 
   if (mode === "new" && !position) {
-    return <NewPositionStep companies={companies} organizations={organizations} user={user} onCreated={setPosition} />;
+    return <NewPositionStep companies={companies} organizations={organizations} user={user} lookups={lookups} onCreated={setPosition} />;
   }
 
   if (mode === "existing" && !position) {
@@ -1058,15 +1099,30 @@ function NewEntryWizard({ companies, positions, organizations, user, onDone }) {
   );
 }
 
-function NewPositionStep({ companies, organizations, user, onCreated }) {
+function NewPositionStep({ companies, organizations, user, lookups, onCreated }) {
   const [form, setForm] = useState({
     organizationId: organizations[0]?.id || "",
     containerNumber: "",
+    containerTypeId: "",
+    carrierId: "",
+    salesAgentId: "",
+    jci: "",
+    manipulation: "",
+    goods: "",
     companyId: "",
     openingDate: new Date().toISOString().slice(0, 10),
     note: ""
   });
   const [error, setError] = useState("");
+  const filteredLookups = useMemo(() => {
+    const organizationId = Number(form.organizationId);
+    const onlyThisOrganization = (item) => item.active && (!organizationId || item.organizationId === organizationId);
+    return {
+      containerTypes: (lookups.containerTypes || []).filter(onlyThisOrganization),
+      carriers: (lookups.carriers || []).filter(onlyThisOrganization),
+      salesAgents: (lookups.salesAgents || []).filter(onlyThisOrganization)
+    };
+  }, [form.organizationId, lookups]);
 
   async function save(event) {
     event.preventDefault();
@@ -1090,10 +1146,52 @@ function NewPositionStep({ companies, organizations, user, onCreated }) {
           Broj kontejnera
           <input value={form.containerNumber} onChange={(e) => setForm({ ...form, containerNumber: e.target.value })} required />
         </label>
+        <label>
+          Tip kontejnera
+          <select value={form.containerTypeId} onChange={(e) => setForm({ ...form, containerTypeId: e.target.value })} required>
+            <option value="">Izaberi tip kontejnera</option>
+            {filteredLookups.containerTypes.map((item) => (
+              <option value={item.id} key={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Brodar
+          <select value={form.carrierId} onChange={(e) => setForm({ ...form, carrierId: e.target.value })} required>
+            <option value="">Izaberi brodara</option>
+            {filteredLookups.carriers.map((item) => (
+              <option value={item.id} key={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Komercijalista
+          <select value={form.salesAgentId} onChange={(e) => setForm({ ...form, salesAgentId: e.target.value })} required>
+            <option value="">Izaberi komercijalistu</option>
+            {filteredLookups.salesAgents.map((item) => (
+              <option value={item.id} key={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          JCI
+          <input value={form.jci} onChange={(e) => setForm({ ...form, jci: e.target.value })} required />
+        </label>
         {user?.role === "SUPER_ADMIN" ? (
           <label>
             Spedicija
-            <select value={form.organizationId} onChange={(e) => setForm({ ...form, organizationId: e.target.value, companyId: "" })} required>
+            <select
+              value={form.organizationId}
+              onChange={(e) => setForm({
+                ...form,
+                organizationId: e.target.value,
+                companyId: "",
+                containerTypeId: "",
+                carrierId: "",
+                salesAgentId: ""
+              })}
+              required
+            >
               <option value="">Izaberi spediciju</option>
               {organizations.map((organization) => (
                 <option value={organization.id} key={organization.id}>{organization.name}</option>
@@ -1115,6 +1213,14 @@ function NewPositionStep({ companies, organizations, user, onCreated }) {
         <label>
           Datum otvaranja
           <input type="date" value={form.openingDate} onChange={(e) => setForm({ ...form, openingDate: e.target.value })} />
+        </label>
+        <label>
+          Manipulacija
+          <input value={form.manipulation} onChange={(e) => setForm({ ...form, manipulation: e.target.value })} />
+        </label>
+        <label>
+          Roba
+          <input value={form.goods} onChange={(e) => setForm({ ...form, goods: e.target.value })} />
         </label>
         <label>
           Napomena
@@ -1800,6 +1906,189 @@ function InvoicePaymentPanel({ invoice, onClose, onChanged }) {
       </table>
       {details && !details.payments.length ? <Empty text="Nema evidentiranih placanja za ovaj racun." /> : null}
     </section>
+  );
+}
+
+function LookupsPanel({ lookups, organizations, user, onSaved }) {
+  const [type, setType] = useState("containerTypes");
+  const [organizationId, setOrganizationId] = useState(organizations[0]?.id || "");
+  const [form, setForm] = useState({ name: "", note: "", active: true });
+  const [editing, setEditing] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const config = LOOKUP_CONFIG[type];
+
+  useEffect(() => {
+    if (user?.role === "SUPER_ADMIN" && !organizationId && organizations[0]?.id) {
+      setOrganizationId(organizations[0].id);
+    }
+  }, [organizations, organizationId, user?.role]);
+
+  const rows = useMemo(() => {
+    const selectedOrganizationId = Number(organizationId);
+    return (lookups[type] || []).filter((row) =>
+      user?.role !== "SUPER_ADMIN" || !selectedOrganizationId || row.organizationId === selectedOrganizationId
+    );
+  }, [lookups, organizationId, type, user?.role]);
+
+  function resetForm() {
+    setForm({ name: "", note: "", active: true });
+    setEditing(null);
+  }
+
+  function editRow(row) {
+    setEditing(row);
+    setForm({ name: row.name, note: row.note || "", active: row.active });
+  }
+
+  async function save(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    const payload = {
+      ...form,
+      ...(user?.role === "SUPER_ADMIN" ? { organizationId } : {})
+    };
+
+    try {
+      if (editing) {
+        await request(`/lookups/${type}/${editing.id}`, { method: "PUT", body: JSON.stringify(payload) });
+        setMessage("Stavka je izmijenjena.");
+      } else {
+        await request(`/lookups/${type}`, { method: "POST", body: JSON.stringify(payload) });
+        setMessage(`Dodat je novi ${config.singular}.`);
+      }
+      resetForm();
+      await onSaved();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function toggle(row) {
+    setError("");
+    setMessage("");
+    try {
+      await request(`/lookups/${type}/${row.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ active: !row.active })
+      });
+      setMessage(row.active ? "Stavka je deaktivirana." : "Stavka je aktivirana.");
+      await onSaved();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <div className="stack">
+      {message ? <div className="success">{message}</div> : null}
+      {error ? <div className="alert">{error}</div> : null}
+
+      <section className="panel">
+        <div className="panel-heading lookup-heading">
+          <div>
+            <h2>Sifrarnici</h2>
+            <p>Unosi stalne vrijednosti koje se koriste kod otvaranja pozicije.</p>
+          </div>
+          {user?.role === "SUPER_ADMIN" ? (
+            <select value={organizationId} onChange={(event) => { setOrganizationId(event.target.value); resetForm(); }}>
+              <option value="">Sve spedicije</option>
+              {organizations.map((organization) => (
+                <option value={organization.id} key={organization.id}>{organization.name}</option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+        <div className="lookup-tabs">
+          {Object.entries(LOOKUP_CONFIG).map(([key, item]) => (
+            <button className={type === key ? "active" : ""} key={key} onClick={() => { setType(key); resetForm(); }}>
+              {item.title}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="split wide">
+        <section className="panel">
+          <div className="panel-heading">
+            <h2>{config.title}</h2>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Naziv</th>
+                {user?.role === "SUPER_ADMIN" ? <th>Spedicija</th> : null}
+                <th>Napomena</th>
+                <th>Status</th>
+                <th>Akcije</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td><strong>{row.name}</strong></td>
+                  {user?.role === "SUPER_ADMIN" ? <td>{row.organization?.name || ""}</td> : null}
+                  <td>{row.note}</td>
+                  <td><span className={`badge ${row.active ? "" : "inactive"}`}>{row.active ? "AKTIVNO" : "NEAKTIVNO"}</span></td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="small-action" onClick={() => editRow(row)}>
+                        <Pencil size={15} />
+                        Izmijeni
+                      </button>
+                      <button className="small-action" onClick={() => toggle(row)}>
+                        {row.active ? "Deaktiviraj" : "Aktiviraj"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!rows.length ? <Empty text={config.empty} /> : null}
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <h2>{editing ? "Izmjena stavke" : `Novi ${config.singular}`}</h2>
+          </div>
+          <form className="form" onSubmit={save}>
+            {user?.role === "SUPER_ADMIN" ? (
+              <label>
+                Spedicija
+                <select value={organizationId} onChange={(event) => setOrganizationId(event.target.value)} required disabled={Boolean(editing)}>
+                  <option value="">Izaberi spediciju</option>
+                  {organizations.map((organization) => (
+                    <option value={organization.id} key={organization.id}>{organization.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <label>
+              Naziv
+              <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+            </label>
+            <label>
+              Napomena
+              <textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} />
+            </label>
+            <label className="check-row">
+              <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
+              Aktivno
+            </label>
+            <div className="form-actions">
+              {editing ? <button type="button" className="secondary" onClick={resetForm}>Odustani</button> : <span />}
+              <button className="primary">
+                <Plus size={18} />
+                {editing ? "Snimi izmjene" : "Dodaj stavku"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </div>
   );
 }
 

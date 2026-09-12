@@ -4,6 +4,7 @@ import {
   BarChart3,
   Building2,
   Container,
+  Copy,
   Download,
   Pencil,
   FilePlus2,
@@ -117,6 +118,39 @@ function dateValue(value) {
   return new Intl.DateTimeFormat("sr-Latn-ME").format(new Date(value));
 }
 
+function positionTime(value) {
+  const time = new Date(value || 0).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function positionMonthKey(position) {
+  const date = new Date(position.openingDate || 0);
+  const year = Number.isNaN(date.getTime()) ? "bez-datuma" : date.getFullYear();
+  const month = Number.isNaN(date.getTime()) ? "00" : String(date.getMonth() + 1).padStart(2, "0");
+  return `${position.organizationId || position.organization?.id || "spedicija"}-${year}-${month}`;
+}
+
+function monthlyPositionNumbers(rows) {
+  const grouped = new Map();
+  rows.forEach((position) => {
+    const key = positionMonthKey(position);
+    grouped.set(key, [...(grouped.get(key) || []), position]);
+  });
+
+  const numbers = new Map();
+  grouped.forEach((positionsInMonth) => {
+    positionsInMonth
+      .slice()
+      .sort((first, second) =>
+        positionTime(first.openingDate) - positionTime(second.openingDate)
+        || positionTime(first.createdAt) - positionTime(second.createdAt)
+        || Number(first.id) - Number(second.id)
+      )
+      .forEach((position, index) => numbers.set(position.id, index + 1));
+  });
+  return numbers;
+}
+
 function Stat({ label, value }) {
   return (
     <div className="stat">
@@ -147,6 +181,7 @@ function App() {
   const [reports, setReports] = useState([]);
   const [lookups, setLookups] = useState({ containerTypes: [], carriers: [], salesAgents: [] });
   const [selectedPosition, setSelectedPosition] = useState(null);
+  const [duplicateDraft, setDuplicateDraft] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPasswordPanel, setShowPasswordPanel] = useState(false);
@@ -227,6 +262,7 @@ function App() {
     setLookups({ containerTypes: [], carriers: [], salesAgents: [] });
     setOrganizations([]);
     setSelectedPosition(null);
+    setDuplicateDraft(null);
   }
 
   if (!token) return <LoginScreen onLogin={handleLogin} />;
@@ -289,12 +325,31 @@ function App() {
           <Positions
             positions={positions}
             companies={companies}
+            lookups={lookups}
             selectedPosition={selectedPosition}
             setSelectedPosition={setSelectedPosition}
+            user={user}
+            onDuplicate={(position) => {
+              setDuplicateDraft(position);
+              setSelectedPosition(null);
+              setActive("entry");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
             onSaved={loadAll}
           />
         )}
-        {active === "entry" && <NewEntryWizard companies={companies} positions={positions} organizations={organizations} user={user} lookups={lookups} onDone={loadAll} />}
+        {active === "entry" && (
+          <NewEntryWizard
+            companies={companies}
+            positions={positions}
+            organizations={organizations}
+            user={user}
+            lookups={lookups}
+            duplicateDraft={duplicateDraft}
+            onDuplicateDraftUsed={() => setDuplicateDraft(null)}
+            onDone={loadAll}
+          />
+        )}
         {active === "reports" && <Reports rows={reports} positions={positions} companies={companies} organizations={organizations} user={user} onSaved={loadAll} />}
         {active === "kifkuf" && <KifKuf companies={companies} organizations={organizations} user={user} />}
         {active === "lookups" && ["ADMIN", "SUPER_ADMIN"].includes(user?.role) && (
@@ -541,8 +596,33 @@ function Companies({ companies, organizations, user, onSaved }) {
   );
 }
 
-function Positions({ positions, companies, selectedPosition, setSelectedPosition, onSaved }) {
+function Positions({ positions, companies, lookups, selectedPosition, setSelectedPosition, user, onDuplicate, onSaved }) {
   const activePositions = positions.filter((position) => position.status !== "ZATVORENA");
+  const canEdit = user?.role !== "VIEWER";
+  const [editingPosition, setEditingPosition] = useState(null);
+  const [containerSearch, setContainerSearch] = useState("");
+  const [error, setError] = useState("");
+  const filteredPositions = useMemo(() => {
+    const needle = containerSearch.trim().toUpperCase();
+    if (!needle) return activePositions;
+    return activePositions.filter((position) =>
+      String(position.containerNumber || "").toUpperCase().includes(needle)
+    );
+  }, [activePositions, containerSearch]);
+
+  async function deletePosition(row) {
+    const confirmed = window.confirm(`Obrisati poziciju ${row.containerNumber}? Obrisaće se i njene fakture, plaćanja i troškovi.`);
+    if (!confirmed) return;
+
+    setError("");
+    try {
+      await request(`/positions/${row.id}`, { method: "DELETE" });
+      if (selectedPosition?.id === row.id) setSelectedPosition(null);
+      await onSaved();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   if (selectedPosition) {
     return (
@@ -570,41 +650,247 @@ function Positions({ positions, companies, selectedPosition, setSelectedPosition
             <p>Klikni na red za prikaz detalja, ulaznih i izlaznih racuna.</p>
           </div>
         </div>
-        <PositionTable rows={activePositions} onSelect={setSelectedPosition} />
+        {error ? <div className="alert inline-alert">{error}</div> : null}
+        <label className="search">
+          <Search size={18} />
+          <input
+            placeholder="Pretrazi po broju kontejnera"
+            value={containerSearch}
+            onChange={(event) => setContainerSearch(event.target.value)}
+          />
+        </label>
+        <PositionTable
+          rows={filteredPositions}
+          onSelect={setSelectedPosition}
+          onEdit={canEdit ? setEditingPosition : null}
+          onDuplicate={canEdit ? onDuplicate : null}
+          onDelete={canEdit ? deletePosition : null}
+        />
+        {editingPosition ? (
+          <EditPositionForm
+            position={editingPosition}
+            companies={companies}
+            lookups={lookups}
+            onCancel={() => setEditingPosition(null)}
+            onSaved={async () => {
+              setEditingPosition(null);
+              await onSaved();
+            }}
+          />
+        ) : null}
       </section>
     </div>
   );
 }
 
-function PositionTable({ rows, onSelect }) {
+function PositionTable({ rows, onSelect, onEdit, onDuplicate, onDelete }) {
+  const sortedRows = useMemo(() => rows.slice().sort((first, second) =>
+    positionTime(second.openingDate) - positionTime(first.openingDate)
+    || positionTime(second.createdAt) - positionTime(first.createdAt)
+    || Number(second.id) - Number(first.id)
+  ), [rows]);
+  const monthlyNumbers = useMemo(() => monthlyPositionNumbers(rows), [rows]);
+
   if (!rows.length) return <Empty text="Nema unesenih pozicija." />;
   return (
     <table>
       <thead>
         <tr>
+          <th>R.br.</th>
           <th>Kontejner</th>
+          <th>Datum otvaranja</th>
           <th>Firma</th>
+          <th>Napomena</th>
           <th>Status</th>
           <th>Prihodi</th>
           <th>Troskovi</th>
           <th>Profit</th>
+          {onEdit || onDuplicate || onDelete ? <th>Akcije</th> : null}
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
+        {sortedRows.map((row) => (
           <tr key={row.id} onClick={() => onSelect?.(row)}>
+            <td><strong>{monthlyNumbers.get(row.id) || ""}</strong></td>
             <td><strong>{row.containerNumber}</strong></td>
+            <td>{dateValue(row.openingDate)}</td>
             <td>{row.company?.name || ""}</td>
+            <td className="note-cell">{row.note || ""}</td>
             <td><span className="badge">{row.status}</span></td>
             <td>{money(row.financial?.totalRevenue)}</td>
             <td>{money(row.financial?.totalCosts)}</td>
             <td className={Number(row.financial?.profit) < 0 ? "negative" : "positive"}>
               {money(row.financial?.profit)}
             </td>
+            {onEdit || onDuplicate || onDelete ? (
+              <td>
+                <div className="row-actions">
+                  {onEdit ? (
+                    <button
+                      className="small-action"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEdit(row);
+                      }}
+                      title="Izmijeni poziciju"
+                    >
+                      <Pencil size={15} />
+                      Edit
+                    </button>
+                  ) : null}
+                  {onDuplicate ? (
+                    <button
+                      className="small-action"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDuplicate(row);
+                      }}
+                      title="Dupliraj poziciju"
+                    >
+                      <Copy size={15} />
+                      Dupliraj
+                    </button>
+                  ) : null}
+                  {onDelete ? (
+                    <button
+                      className="small-action danger"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(row);
+                      }}
+                      title="Obrisi poziciju"
+                    >
+                      <Trash2 size={15} />
+                      Obrisi
+                    </button>
+                  ) : null}
+                </div>
+              </td>
+            ) : null}
           </tr>
         ))}
       </tbody>
     </table>
+  );
+}
+
+function EditPositionForm({ position, companies, lookups, onCancel, onSaved }) {
+  const [form, setForm] = useState({
+    containerNumber: position.containerNumber || "",
+    companyId: position.companyId || "",
+    openingDate: isoDate(position.openingDate),
+    containerTypeId: position.containerTypeId || "",
+    carrierId: position.carrierId || "",
+    salesAgentId: position.salesAgentId || "",
+    jci: position.jci || "",
+    manipulation: position.manipulation || "",
+    goods: position.goods || "",
+    note: position.note || ""
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const organizationId = Number(position.organizationId);
+  const filteredCompanies = companies.filter((company) => !organizationId || company.organizationId === organizationId);
+  const lookupOptions = useMemo(() => {
+    const keepActiveOrSelected = (selectedId) => (item) =>
+      item.organizationId === organizationId && (item.active || item.id === Number(selectedId));
+
+    return {
+      containerTypes: (lookups.containerTypes || []).filter(keepActiveOrSelected(form.containerTypeId)),
+      carriers: (lookups.carriers || []).filter(keepActiveOrSelected(form.carrierId)),
+      salesAgents: (lookups.salesAgents || []).filter(keepActiveOrSelected(form.salesAgentId))
+    };
+  }, [form.carrierId, form.containerTypeId, form.salesAgentId, lookups, organizationId]);
+
+  async function save(event) {
+    event.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      await request(`/positions/${position.id}`, { method: "PUT", body: JSON.stringify(form) });
+      await onSaved();
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="edit-form" onSubmit={save}>
+      <div className="edit-form-heading">
+        <strong>Izmjena pozicije {position.containerNumber}</strong>
+        <button type="button" className="small-action" onClick={onCancel}>Zatvori</button>
+      </div>
+      {error ? <div className="alert inline-alert">{error}</div> : null}
+      <div className="edit-grid">
+        <label>
+          Broj kontejnera
+          <input value={form.containerNumber} onChange={(event) => setForm({ ...form, containerNumber: event.target.value })} required />
+        </label>
+        <label>
+          Firma / klijent
+          <select value={form.companyId} onChange={(event) => setForm({ ...form, companyId: event.target.value })}>
+            <option value="">Bez firme</option>
+            {filteredCompanies.map((company) => (
+              <option value={company.id} key={company.id}>{company.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Datum otvaranja
+          <input type="date" value={form.openingDate} onChange={(event) => setForm({ ...form, openingDate: event.target.value })} required />
+        </label>
+        <label>
+          Tip kontejnera
+          <select value={form.containerTypeId} onChange={(event) => setForm({ ...form, containerTypeId: event.target.value })} required>
+            <option value="">Izaberi tip kontejnera</option>
+            {lookupOptions.containerTypes.map((item) => (
+              <option value={item.id} key={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Brodar
+          <select value={form.carrierId} onChange={(event) => setForm({ ...form, carrierId: event.target.value })} required>
+            <option value="">Izaberi brodara</option>
+            {lookupOptions.carriers.map((item) => (
+              <option value={item.id} key={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Komercijalista
+          <select value={form.salesAgentId} onChange={(event) => setForm({ ...form, salesAgentId: event.target.value })} required>
+            <option value="">Izaberi komercijalistu</option>
+            {lookupOptions.salesAgents.map((item) => (
+              <option value={item.id} key={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          JCI
+          <input value={form.jci} onChange={(event) => setForm({ ...form, jci: event.target.value })} required />
+        </label>
+        <label>
+          Manipulacija
+          <input value={form.manipulation} onChange={(event) => setForm({ ...form, manipulation: event.target.value })} />
+        </label>
+        <label>
+          Roba
+          <input value={form.goods} onChange={(event) => setForm({ ...form, goods: event.target.value })} />
+        </label>
+        <label>
+          Napomena
+          <input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} />
+        </label>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="secondary" onClick={onCancel}>Odustani</button>
+        <button className="primary" disabled={saving}>{saving ? "Snimanje..." : "Snimi izmjene"}</button>
+      </div>
+    </form>
   );
 }
 
@@ -626,6 +912,7 @@ function PositionDetails({ position, companies, onSaved, onClosed }) {
       </div>
 
       <div className="position-meta">
+        <Stat label="Datum otvaranja" value={dateValue(position.openingDate) || "-"} />
         <Stat label="Tip kontejnera" value={position.containerType || "-"} />
         <Stat label="Brodar" value={position.carrier || "-"} />
         <Stat label="Komercijalista" value={position.salesAgent || "-"} />
@@ -1028,11 +1315,11 @@ function QuickInvoice({ position, companies, onSaved }) {
   );
 }
 
-function NewEntryWizard({ companies, positions, organizations, user, lookups, onDone }) {
-  const [mode, setMode] = useState("");
+function NewEntryWizard({ companies, positions, organizations, user, lookups, duplicateDraft, onDuplicateDraftUsed, onDone }) {
+  const [mode, setMode] = useState(duplicateDraft ? "new" : "");
   const [position, setPosition] = useState(null);
   const [search, setSearch] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(duplicateDraft ? `Dupliras poziciju ${duplicateDraft.containerNumber}. Unesi novi broj kontejnera.` : "");
   const openPositions = useMemo(() => positions.filter((position) => position.status !== "ZATVORENA"), [positions]);
   const filtered = useMemo(() => {
     const needle = search.trim().toUpperCase();
@@ -1043,6 +1330,14 @@ function NewEntryWizard({ companies, positions, organizations, user, lookups, on
       )
     );
   }, [openPositions, search]);
+
+  useEffect(() => {
+    if (!duplicateDraft) return;
+    setMode("new");
+    setPosition(null);
+    setSearch("");
+    setNotice(`Dupliras poziciju ${duplicateDraft.containerNumber}. Unesi novi broj kontejnera.`);
+  }, [duplicateDraft]);
 
   if (!mode) {
     return (
@@ -1065,7 +1360,24 @@ function NewEntryWizard({ companies, positions, organizations, user, lookups, on
   }
 
   if (mode === "new" && !position) {
-    return <NewPositionStep companies={companies} organizations={organizations} user={user} lookups={lookups} onCreated={setPosition} />;
+    return (
+      <>
+        {notice ? <div className="success">{notice}</div> : null}
+        <NewPositionStep
+          key={duplicateDraft?.id || "blank-position"}
+          companies={companies}
+          organizations={organizations}
+          user={user}
+          lookups={lookups}
+          duplicateDraft={duplicateDraft}
+          onCreated={(createdPosition) => {
+            onDuplicateDraftUsed?.();
+            setNotice("");
+            setPosition(createdPosition);
+          }}
+        />
+      </>
+    );
   }
 
   if (mode === "existing" && !position) {
@@ -1099,30 +1411,31 @@ function NewEntryWizard({ companies, positions, organizations, user, lookups, on
   );
 }
 
-function NewPositionStep({ companies, organizations, user, lookups, onCreated }) {
+function NewPositionStep({ companies, organizations, user, lookups, duplicateDraft, onCreated }) {
   const [form, setForm] = useState({
-    organizationId: organizations[0]?.id || "",
+    organizationId: duplicateDraft?.organizationId || organizations[0]?.id || "",
     containerNumber: "",
-    containerTypeId: "",
-    carrierId: "",
-    salesAgentId: "",
-    jci: "",
-    manipulation: "",
-    goods: "",
-    companyId: "",
-    openingDate: new Date().toISOString().slice(0, 10),
-    note: ""
+    containerTypeId: duplicateDraft?.containerTypeId || "",
+    carrierId: duplicateDraft?.carrierId || "",
+    salesAgentId: duplicateDraft?.salesAgentId || "",
+    jci: duplicateDraft?.jci || "",
+    manipulation: duplicateDraft?.manipulation || "",
+    goods: duplicateDraft?.goods || "",
+    companyId: duplicateDraft?.companyId || "",
+    openingDate: duplicateDraft?.openingDate ? isoDate(duplicateDraft.openingDate) : new Date().toISOString().slice(0, 10),
+    note: duplicateDraft?.note || ""
   });
   const [error, setError] = useState("");
   const filteredLookups = useMemo(() => {
     const organizationId = Number(form.organizationId);
-    const onlyThisOrganization = (item) => item.active && (!organizationId || item.organizationId === organizationId);
+    const keepForOrganization = (selectedId) => (item) =>
+      (!organizationId || item.organizationId === organizationId) && (item.active || item.id === Number(selectedId));
     return {
-      containerTypes: (lookups.containerTypes || []).filter(onlyThisOrganization),
-      carriers: (lookups.carriers || []).filter(onlyThisOrganization),
-      salesAgents: (lookups.salesAgents || []).filter(onlyThisOrganization)
+      containerTypes: (lookups.containerTypes || []).filter(keepForOrganization(form.containerTypeId)),
+      carriers: (lookups.carriers || []).filter(keepForOrganization(form.carrierId)),
+      salesAgents: (lookups.salesAgents || []).filter(keepForOrganization(form.salesAgentId))
     };
-  }, [form.organizationId, lookups]);
+  }, [form.carrierId, form.containerTypeId, form.organizationId, form.salesAgentId, lookups]);
 
   async function save(event) {
     event.preventDefault();
@@ -1392,6 +1705,10 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
   const reportDescription = isPositionReport
       ? "Klikni na red za detalje pozicije, ulaznih i izlaznih racuna."
       : "Pregled zbirnih prihoda, troskova i profita.";
+  const positionsTotal = useMemo(() => {
+    if (isPositionReport) return rows.length;
+    return rows.reduce((sum, row) => sum + Number(row.positionsCount || 0), 0);
+  }, [isPositionReport, rows]);
 
   useEffect(() => {
     let activeRequest = true;
@@ -1536,6 +1853,9 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
           ))}
         </tbody>
       </table>
+      <div className="report-summary">
+        <strong>Ukupno kontejnera: {positionsTotal}</strong>
+      </div>
       {loading ? <Empty text="Ucitavanje izvjestaja..." /> : null}
       {error ? <div className="alert inline-alert">{error}</div> : null}
       {!loading && !rows.length ? <Empty text="Nema podataka za izabrani filter." /> : null}

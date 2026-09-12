@@ -4,6 +4,7 @@ import { requireWriteAccess } from "../middleware/auth.js";
 import {
   closePosition,
   createPosition,
+  deletePosition,
   getPosition,
   getPositionByContainer,
   listPositions,
@@ -73,6 +74,15 @@ router.post("/", requireWriteAccess, async (req, res, next) => {
 router.put("/:id", requireWriteAccess, async (req, res, next) => {
   try {
     res.json({ success: true, data: await updatePosition(req.params.id, req.body, req.user) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/:id", requireWriteAccess, async (req, res, next) => {
+  try {
+    await deletePosition(req.params.id, req.user);
+    res.status(204).send();
   } catch (error) {
     next(error);
   }

@@ -99,14 +99,6 @@ export async function createPosition(data, user) {
   }
 
   const containerNumber = normalizeContainerNumber(data.containerNumber);
-  const existing = await prisma.position.findFirst({ where: { containerNumber, organizationId } });
-
-  if (existing) {
-    const error = new Error("Pozicija sa ovim brojem kontejnera vec postoji.");
-    error.status = 409;
-    error.existingPositionId = existing.id;
-    throw error;
-  }
 
   const [containerType, carrier, salesAgent] = await Promise.all([
     getRequiredLookup(prisma.containerType, data.containerTypeId, organizationId, "Izaberi validan tip kontejnera."),
@@ -151,15 +143,72 @@ export async function updatePosition(id, data, user) {
   }
 
   const payload = { ...data };
+  delete payload.organizationId;
   if (payload.containerNumber) payload.containerNumber = normalizeContainerNumber(payload.containerNumber);
-  if (payload.organizationId) payload.organizationId = Number(payload.organizationId);
-  if (payload.companyId) payload.companyId = Number(payload.companyId);
+  if ("companyId" in payload) payload.companyId = payload.companyId ? Number(payload.companyId) : null;
   if (payload.openingDate) payload.openingDate = new Date(payload.openingDate);
   if (payload.closingDate) payload.closingDate = new Date(payload.closingDate);
+  if (payload.closingDate === "") payload.closingDate = null;
+  if (payload.manipulation === "") payload.manipulation = null;
+  if (payload.goods === "") payload.goods = null;
+  if (payload.note === "") payload.note = null;
+  if ("containerTypeId" in payload) {
+    const containerType = await getRequiredLookup(
+      prisma.containerType,
+      payload.containerTypeId,
+      existing.organizationId,
+      "Izaberi validan tip kontejnera."
+    );
+    payload.containerTypeId = containerType.id;
+    payload.containerType = containerType.name;
+  }
+  if ("carrierId" in payload) {
+    const carrier = await getRequiredLookup(
+      prisma.carrier,
+      payload.carrierId,
+      existing.organizationId,
+      "Izaberi validnog brodara."
+    );
+    payload.carrierId = carrier.id;
+    payload.carrier = carrier.name;
+  }
+  if ("salesAgentId" in payload) {
+    const salesAgent = await getRequiredLookup(
+      prisma.salesAgent,
+      payload.salesAgentId,
+      existing.organizationId,
+      "Izaberi validnog komercijalistu."
+    );
+    payload.salesAgentId = salesAgent.id;
+    payload.salesAgent = salesAgent.name;
+  }
 
   return prisma.position.update({
     where: { id: Number(id) },
     data: payload
+  });
+}
+
+export async function deletePosition(id, user) {
+  const position = await prisma.position.findFirst({
+    where: { id: Number(id), ...tenantWhere(user) },
+    include: { invoices: { select: { id: true } } }
+  });
+  if (!position) {
+    const error = new Error("Pozicija nije pronadjena.");
+    error.status = 404;
+    throw error;
+  }
+
+  const invoiceIds = position.invoices.map((invoice) => invoice.id);
+
+  return prisma.$transaction(async (tx) => {
+    if (invoiceIds.length) {
+      await tx.invoicePayment.deleteMany({ where: { invoiceId: { in: invoiceIds } } });
+      await tx.invoice.deleteMany({ where: { id: { in: invoiceIds } } });
+    }
+    await tx.additionalCost.deleteMany({ where: { positionId: position.id } });
+    return tx.position.delete({ where: { id: position.id } });
   });
 }
 

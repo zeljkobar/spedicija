@@ -431,6 +431,13 @@ tbody tr:hover {
   margin-top: 6px;
 }
 
+.note-cell {
+  color: #475569;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .small-action {
   align-items: center;
   background: #ffffff;
@@ -606,6 +613,13 @@ tbody tr:hover {
 .report-actions input {
   min-width: 150px;
   width: auto;
+}
+
+.report-summary {
+  background: #f8fafc;
+  border-top: 1px solid #e5ebf2;
+  color: #24364b;
+  padding: 14px 16px;
 }
 
 .context {

@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { prisma } from "../db.js";
 
 function jwtSecret() {
   return process.env.JWT_SECRET || "promijeni-ovo-u-produkciji";
@@ -43,7 +44,7 @@ export function tenantWhere(user, field = "organizationId") {
   return { [field]: Number(user.organizationId) };
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const [scheme, token] = header.split(" ");
 
@@ -52,9 +53,17 @@ export function requireAuth(req, res, next) {
   }
 
   try {
-    req.user = jwt.verify(token, jwtSecret());
+    const claims = jwt.verify(token, jwtSecret());
+    const user = await prisma.user.findUnique({ where: { id: Number(claims.sub) }, include: { organization: true } });
+    if (!user?.active || (user.organization && !user.organization.active)) {
+      return res.status(401).json({ success: false, message: "Korisnik ili spedicija nisu aktivni." });
+    }
+    req.user = { sub: user.id, email: user.email, role: user.role, organizationId: user.organizationId };
     return next();
-  } catch {
-    return res.status(401).json({ success: false, message: "Sesija je istekla. Prijavi se ponovo." });
+  } catch (error) {
+    if (["JsonWebTokenError", "TokenExpiredError", "NotBeforeError"].includes(error.name)) {
+      return res.status(401).json({ success: false, message: "Sesija je istekla. Prijavi se ponovo." });
+    }
+    return next(error);
   }
 }

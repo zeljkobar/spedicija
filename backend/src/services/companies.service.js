@@ -68,6 +68,10 @@ export async function updateCompany(id, data, user) {
   }
 
   const payload = { ...data };
+  if (payload.organizationId && Number(payload.organizationId) !== existing.organizationId) {
+    throw Object.assign(new Error("Firma se ne moze premjestiti u drugu spediciju."), { status: 403 });
+  }
+  delete payload.organizationId;
   if (payload.organizationId) payload.organizationId = Number(payload.organizationId);
 
   return prisma.company.update({

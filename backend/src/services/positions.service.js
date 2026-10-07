@@ -99,6 +99,9 @@ export async function createPosition(data, user) {
   }
 
   const containerNumber = normalizeContainerNumber(data.containerNumber);
+  if (data.companyId && !await prisma.company.findFirst({ where: { id: Number(data.companyId), organizationId } })) {
+    throw Object.assign(new Error("Firma ne pripada izabranoj spediciji."), { status: 400 });
+  }
 
   const [containerType, carrier, salesAgent] = await Promise.all([
     getRequiredLookup(prisma.containerType, data.containerTypeId, organizationId, "Izaberi validan tip kontejnera."),
@@ -144,6 +147,9 @@ export async function updatePosition(id, data, user) {
 
   const payload = { ...data };
   delete payload.organizationId;
+  if (data.companyId && !await prisma.company.findFirst({ where: { id: Number(data.companyId), organizationId: existing.organizationId } })) {
+    throw Object.assign(new Error("Firma ne pripada izabranoj spediciji."), { status: 400 });
+  }
   if (payload.containerNumber) payload.containerNumber = normalizeContainerNumber(payload.containerNumber);
   if ("companyId" in payload) payload.companyId = payload.companyId ? Number(payload.companyId) : null;
   if (payload.openingDate) payload.openingDate = new Date(payload.openingDate);

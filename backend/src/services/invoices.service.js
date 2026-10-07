@@ -89,6 +89,14 @@ export async function updateInvoice(id, data, user) {
   }
 
   const payload = { ...data };
+  const position = await prisma.position.findFirst({
+    where: { id: Number(data.positionId || existing.positionId), ...tenantWhere(user) }
+  });
+  if (!position) throw Object.assign(new Error("Pozicija nije pronadjena."), { status: 404 });
+  const company = await prisma.company.findFirst({
+    where: { id: Number(data.companyId || existing.companyId), organizationId: position.organizationId }
+  });
+  if (!company) throw Object.assign(new Error("Firma ne pripada izabranoj spediciji."), { status: 400 });
   if (payload.companyId) payload.companyId = Number(payload.companyId);
   if (payload.positionId) payload.positionId = Number(payload.positionId);
   if (payload.invoiceDate) payload.invoiceDate = new Date(payload.invoiceDate);

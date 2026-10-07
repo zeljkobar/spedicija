@@ -507,6 +507,57 @@ tbody tr:hover {
   min-width: 1180px;
 }
 
+.batch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e5ebf2;
+}
+
+.kifkuf-table .selection-cell {
+  width: 36px;
+}
+
+.selection-cell input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+}
+
+.position-confirm.batch-confirm {
+  width: min(600px, calc(100vw - 32px));
+}
+
+.batch-fields {
+  border: 0;
+  padding: 0;
+  margin: 18px 0 0;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.batch-preview {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.batch-preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e5ebf2;
+  padding: 10px 0;
+  overflow-wrap: anywhere;
+}
+
+.batch-preview-row > strong {
+  white-space: nowrap;
+}
+
 .kifkuf-table th,
 .kifkuf-table td {
   padding: 9px 10px;
@@ -613,6 +664,42 @@ tbody tr:hover {
 .report-actions input {
   min-width: 150px;
   width: auto;
+}
+
+.position-confirm {
+  border: 1px solid #e5ebf2;
+  border-radius: 8px;
+  padding: 24px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  color: inherit;
+}
+
+.position-confirm::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.position-confirm h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}
+
+.position-confirm dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 12px;
+  margin: 0 0 24px;
+}
+
+.position-confirm dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.position-confirm .row-actions {
+  justify-content: flex-end;
 }
 
 .report-summary {

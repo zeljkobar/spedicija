@@ -40,7 +40,7 @@ router.post("/", requireWriteAccess, async (req, res, next) => {
 
 router.put("/:id", requireWriteAccess, async (req, res, next) => {
   try {
-    res.json({ success: true, data: await updateInvoice(req.params.id, req.body, req.user) });
+    res.json({ success: true, data: await updateInvoice(req.params.id, schema.partial().parse(req.body), req.user) });
   } catch (error) {
     next(error);
   }

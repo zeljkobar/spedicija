@@ -106,6 +106,44 @@ export async function createInvoicePayment(invoiceId, data, user) {
   return payment;
 }
 
+export async function settleInvoiceBatch(data, user) {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const ids = data.items.map((item) => item.invoiceId);
+      const invoices = await tx.invoice.findMany({
+        where: { id: { in: ids }, position: tenantWhere(user) },
+        include: { payments: true }
+      });
+      if (invoices.length !== ids.length) {
+        throw Object.assign(new Error("Neki racuni nisu dostupni. Osvjezite spisak."), { status: 409 });
+      }
+      let total = 0;
+      for (const invoice of invoices) {
+        const expected = data.items.find((item) => item.invoiceId === invoice.id);
+        const { remainingAmount } = paymentSummary(invoice);
+        if (invoice.paymentStatus === "STORNIRANO" || remainingAmount <= 0 || remainingAmount !== roundMoney(expected.remainingAmount)) {
+          throw Object.assign(new Error("Dug oznacenih racuna je promijenjen. Osvjezite spisak i ponovite izbor."), { status: 409 });
+        }
+        await tx.invoicePayment.create({ data: {
+          invoiceId: invoice.id,
+          paymentDate: new Date(data.paymentDate),
+          amount: remainingAmount,
+          method: data.method || "ZIRO_RACUN",
+          note: data.note || null
+        } });
+        await tx.invoice.update({ where: { id: invoice.id }, data: { paymentStatus: "PLACENO" } });
+        total += remainingAmount;
+      }
+      return { count: invoices.length, total: roundMoney(total) };
+    }, { isolationLevel: "Serializable", timeout: 20000 });
+  } catch (error) {
+    if (error.code === "P2034") {
+      throw Object.assign(new Error("Racuni su u medjuvremenu izmijenjeni. Osvjezite spisak i pokusajte ponovo."), { status: 409 });
+    }
+    throw error;
+  }
+}
+
 export async function deleteInvoicePayment(id, user) {
   const payment = await prisma.invoicePayment.findFirst({
     where: { id: Number(id), invoice: { position: tenantWhere(user) } }

@@ -260,7 +260,7 @@ export async function supplierInvoices(query = {}, user) {
     include: { company: true, position: true, payments: true },
     orderBy: { invoiceDate: "desc" }
   });
-  return invoices.map(invoiceRow);
+  return invoices.map(invoiceRow).filter((row) => query.onlyDebt !== "true" || (row.remainingAmount > 0 && row.paymentStatus !== "STORNIRANO"));
 }
 
 export async function customerInvoices(query = {}, user) {
@@ -269,7 +269,7 @@ export async function customerInvoices(query = {}, user) {
     include: { company: true, position: true, payments: true },
     orderBy: { invoiceDate: "desc" }
   });
-  return invoices.map(invoiceRow);
+  return invoices.map(invoiceRow).filter((row) => query.onlyDebt !== "true" || (row.remainingAmount > 0 && row.paymentStatus !== "STORNIRANO"));
 }
 
 export async function dashboardSummary(user) {

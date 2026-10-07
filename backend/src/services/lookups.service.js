@@ -67,6 +67,10 @@ export async function updateLookup(type, id, data, user) {
   }
 
   const payload = { ...data };
+  if (payload.organizationId && Number(payload.organizationId) !== existing.organizationId) {
+    throw Object.assign(new Error("Stavka se ne moze premjestiti u drugu spediciju."), { status: 403 });
+  }
+  delete payload.organizationId;
   if (payload.name) payload.name = payload.name.trim();
   if (payload.organizationId) payload.organizationId = Number(payload.organizationId);
   if (payload.note === "") payload.note = null;

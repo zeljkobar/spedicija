@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BarChart3,
@@ -488,7 +488,7 @@ function Dashboard({ dashboard, positions }) {
         <div className="panel-heading">
           <h2>Posljednje pozicije</h2>
         </div>
-        <PositionTable rows={positions.slice(0, 8)} />
+        <PositionTable rows={positions.slice(0, 8)} numberingRows={positions} />
       </section>
     </>
   );
@@ -597,6 +597,7 @@ function Companies({ companies, organizations, user, onSaved }) {
 }
 
 function Positions({ positions, companies, lookups, selectedPosition, setSelectedPosition, user, onDuplicate, onSaved }) {
+  const [pendingPosition, setPendingPosition] = useState(null);
   const activePositions = positions.filter((position) => position.status !== "ZATVORENA");
   const canEdit = user?.role !== "VIEWER";
   const [editingPosition, setEditingPosition] = useState(null);
@@ -661,11 +662,22 @@ function Positions({ positions, companies, lookups, selectedPosition, setSelecte
         </label>
         <PositionTable
           rows={filteredPositions}
-          onSelect={setSelectedPosition}
+          numberingRows={positions}
+          onSelect={setPendingPosition}
           onEdit={canEdit ? setEditingPosition : null}
           onDuplicate={canEdit ? onDuplicate : null}
           onDelete={canEdit ? deletePosition : null}
         />
+        {pendingPosition ? (
+          <ConfirmOpenPosition
+            position={pendingPosition}
+            onCancel={() => setPendingPosition(null)}
+            onConfirm={() => {
+              setSelectedPosition(pendingPosition);
+              setPendingPosition(null);
+            }}
+          />
+        ) : null}
         {editingPosition ? (
           <EditPositionForm
             position={editingPosition}
@@ -683,13 +695,40 @@ function Positions({ positions, companies, lookups, selectedPosition, setSelecte
   );
 }
 
-function PositionTable({ rows, onSelect, onEdit, onDuplicate, onDelete }) {
+function ConfirmOpenPosition({ position, onCancel, onConfirm }) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+
+  return (
+    <dialog ref={dialogRef} className="position-confirm" aria-labelledby="position-confirm-title" onCancel={onCancel}>
+      <h2 id="position-confirm-title">Otvoriti poziciju?</h2>
+      <dl>
+        <dt>Kontejner</dt><dd>{position.containerNumber}</dd>
+        <dt>Firma</dt><dd>{position.company?.name || "Bez firme"}</dd>
+        <dt>Datum otvaranja</dt><dd>{dateValue(position.openingDate) || "-"}</dd>
+        <dt>ID pozicije</dt><dd>{position.id}</dd>
+        {position.note ? <><dt>Napomena</dt><dd>{position.note}</dd></> : null}
+      </dl>
+      <div className="row-actions">
+        <button className="secondary" autoFocus onClick={onCancel}>Odustani</button>
+        <button onClick={onConfirm}><CheckCircle2 size={18} /> Potvrdi</button>
+      </div>
+    </dialog>
+  );
+}
+
+function PositionTable({ rows, numberingRows = rows, onSelect, onEdit, onDuplicate, onDelete }) {
   const sortedRows = useMemo(() => rows.slice().sort((first, second) =>
     positionTime(second.openingDate) - positionTime(first.openingDate)
     || positionTime(second.createdAt) - positionTime(first.createdAt)
     || Number(second.id) - Number(first.id)
   ), [rows]);
-  const monthlyNumbers = useMemo(() => monthlyPositionNumbers(rows), [rows]);
+  const monthlyNumbers = useMemo(() => monthlyPositionNumbers(numberingRows), [numberingRows]);
 
   if (!rows.length) return <Empty text="Nema unesenih pozicija." />;
   return (
@@ -1390,7 +1429,7 @@ function NewEntryWizard({ companies, positions, organizations, user, lookups, du
           <Search size={18} />
           <input placeholder="Pretrazi broj kontejnera, firmu ili status" value={search} onChange={(e) => setSearch(e.target.value)} />
         </label>
-        <PositionTable rows={filtered} onSelect={setPosition} />
+        <PositionTable rows={filtered} numberingRows={positions} onSelect={setPosition} />
       </section>
     );
   }
@@ -1864,6 +1903,11 @@ function Reports({ rows: initialRows, positions, companies, organizations, user,
 }
 
 function KifKuf({ companies, organizations, user }) {
+  const [onlyDebt, setOnlyDebt] = useState(false);
+  const [markedIds, setMarkedIds] = useState([]);
+  const [batchRows, setBatchRows] = useState(null);
+  const [success, setSuccess] = useState("");
+  const canPay = user?.role !== "VIEWER";
   const [book, setBook] = useState("kuf");
   const [organizationId, setOrganizationId] = useState("");
   const [companyId, setCompanyId] = useState("");
@@ -1875,6 +1919,9 @@ function KifKuf({ companies, organizations, user }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const config = KIF_KUF_CONFIG[book];
+  const payableRows = rows.filter((row) => row.remainingAmount > 0 && row.paymentStatus !== "STORNIRANO");
+  const markedRows = payableRows.filter((row) => markedIds.includes(row.invoiceId));
+  const markedTotal = markedRows.reduce((sum, row) => sum + Number(row.remainingAmount), 0);
 
   const params = useMemo(() => {
     const next = new URLSearchParams();
@@ -1883,8 +1930,9 @@ function KifKuf({ companies, organizations, user }) {
     if (dateFrom) next.set("dateFrom", dateFrom);
     if (dateTo) next.set("dateTo", dateTo);
     next.set("dateBasis", dateBasis);
+    if (onlyDebt) next.set("onlyDebt", "true");
     return next;
-  }, [organizationId, companyId, dateFrom, dateTo, dateBasis]);
+  }, [organizationId, companyId, dateFrom, dateTo, dateBasis, onlyDebt]);
 
   const filteredCompanies = useMemo(
     () => companies.filter((company) => !organizationId || company.organizationId === Number(organizationId)),
@@ -1909,6 +1957,7 @@ function KifKuf({ companies, organizations, user }) {
   );
 
   async function loadRows() {
+    setMarkedIds([]);
     setLoading(true);
     setError("");
     try {
@@ -1926,6 +1975,8 @@ function KifKuf({ companies, organizations, user }) {
 
   useEffect(() => {
     let activeRequest = true;
+    setMarkedIds([]);
+    setSuccess("");
     setLoading(true);
     setError("");
     request(`${config.path}?${params.toString()}`)
@@ -2028,9 +2079,33 @@ function KifKuf({ companies, organizations, user }) {
           </div>
         </div>
 
+        <div className="batch-toolbar">
+          <label className="check-row">
+            <input type="checkbox" checked={onlyDebt} onChange={(event) => setOnlyDebt(event.target.checked)} />
+            Samo sa dugom
+          </label>
+          {canPay ? <>
+            <span>Oznaceno: {markedRows.length} racuna · Ukupno: {money(markedTotal)}</span>
+            <button disabled={loading || Boolean(error) || !markedRows.length} onClick={() => setBatchRows(markedRows)}>
+              <CheckCircle2 size={18} /> Plati oznaceno
+            </button>
+          </> : null}
+        </div>
+        {success ? <div className="report-summary" role="status">{success}</div> : null}
+        {batchRows ? <BatchPaymentDialog rows={batchRows} onClose={() => setBatchRows(null)} onPaid={async (result) => {
+          setBatchRows(null);
+          setSelectedInvoice(null);
+          setSuccess(`Evidentirano placanje za ${result.count} racuna: ${money(result.total)}.`);
+          await loadRows();
+        }} /> : null}
         <table className="kifkuf-table">
           <thead>
             <tr>
+              {canPay ? <th className="selection-cell"><input type="checkbox" aria-label="Oznaci sve prikazane racune sa dugom"
+                disabled={loading || Boolean(error) || !payableRows.length}
+                checked={payableRows.length > 0 && markedRows.length === payableRows.length}
+                ref={(element) => { if (element) element.indeterminate = markedRows.length > 0 && markedRows.length < payableRows.length; }}
+                onChange={(event) => setMarkedIds(event.target.checked ? payableRows.map((row) => row.invoiceId) : [])} /></th> : null}
               <th>Broj</th>
               <th>{config.companyLabel}</th>
               <th>Kontejner</th>
@@ -2047,6 +2122,9 @@ function KifKuf({ companies, organizations, user }) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.invoiceId}>
+                {canPay ? <td className="selection-cell"><input type="checkbox" aria-label={`Oznaci racun ${row.invoiceNumber}, ${row.company}, ${row.containerNumber}`}
+                  disabled={loading || Boolean(error) || row.remainingAmount <= 0 || row.paymentStatus === "STORNIRANO"}
+                  checked={markedIds.includes(row.invoiceId)} onChange={(event) => setMarkedIds((current) => event.target.checked ? [...current, row.invoiceId] : current.filter((id) => id !== row.invoiceId))} /></td> : null}
                 <td><strong>{row.invoiceNumber}</strong></td>
                 <td>{row.company}</td>
                 <td>{row.containerNumber}</td>
@@ -2071,6 +2149,67 @@ function KifKuf({ companies, organizations, user }) {
         {!loading && !rows.length ? <Empty text="Nema racuna za izabrane filtere." /> : null}
       </section>
     </div>
+  );
+}
+
+function BatchPaymentDialog({ rows, onClose, onPaid }) {
+  const dialogRef = useRef(null);
+  const submitting = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ paymentDate: new Date().toISOString().slice(0, 10), method: "ZIRO_RACUN", note: "" });
+  const total = rows.reduce((sum, row) => sum + Number(row.remainingAmount), 0);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+
+  async function submit(event) {
+    event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await request("/invoice-payments/batch", { method: "POST", body: JSON.stringify({
+        ...form, items: rows.map((row) => ({ invoiceId: row.invoiceId, remainingAmount: Number(row.remainingAmount) }))
+      }) });
+      await onPaid(result.data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <dialog ref={dialogRef} className="position-confirm batch-confirm" aria-labelledby="batch-title" onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }}>
+      <h2 id="batch-title">Potvrda placanja</h2>
+      <p>{rows.length} racuna · Ukupno: <strong>{money(total)}</strong></p>
+      <div className="batch-preview">
+        {rows.map((row) => <div key={row.invoiceId} className="batch-preview-row">
+          <span><strong>{row.invoiceNumber}</strong> · {row.company}<br />{row.containerNumber}</span>
+          <strong>{money(row.remainingAmount)}</strong>
+        </div>)}
+      </div>
+      <form onSubmit={submit}>
+        <fieldset disabled={busy} className="batch-fields">
+          <label>Datum placanja<input type="date" required value={form.paymentDate} onChange={(event) => setForm({ ...form, paymentDate: event.target.value })} /></label>
+          <label>Nacin placanja<select value={form.method} onChange={(event) => setForm({ ...form, method: event.target.value })}>
+            {PAYMENT_METHODS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select></label>
+          <label>Broj izvoda / napomena<input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label>
+          {error ? <div className="alert" role="alert">{error}</div> : null}
+          <div className="row-actions">
+            <button type="button" className="secondary" onClick={onClose}>Odustani</button>
+            <button type="submit"><CheckCircle2 size={18} />{busy ? "Cuvanje..." : "Potvrdi placanje"}</button>
+          </div>
+        </fieldset>
+      </form>
+    </dialog>
   );
 }
 

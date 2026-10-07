@@ -5,6 +5,8 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
+    "test:integration": "node test/run-integration.js",
+    "test": "node --test src/services/invoicePayments.test.js test/payments-api.test.js",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",

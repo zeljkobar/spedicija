@@ -960,6 +960,11 @@ function PositionDetails({ position, companies, onSaved, onClosed }) {
         <Stat label="Roba" value={position.goods || "-"} />
       </div>
 
+      <div className="position-note">
+        <strong>Napomena</strong>
+        <p>{position.note || "Nema napomene za ovu poziciju."}</p>
+      </div>
+
       <div className="mini-stats">
         <Stat label="Prihodi" value={money(position.financial?.totalRevenue)} />
         <Stat label="Troskovi" value={money(position.financial?.totalCosts)} />
@@ -1386,7 +1391,7 @@ function NewEntryWizard({ companies, positions, organizations, user, lookups, du
           <button className="choice" onClick={() => { setNotice(""); setMode("new"); }}>
             <Plus size={28} />
             <strong>Nova pozicija / novi kontejner</strong>
-            <span>Prvo otvaras poziciju, zatim unosis fakturu.</span>
+            <span>Snimi poziciju ili nastavi na unos fakture.</span>
           </button>
           <button className="choice" onClick={() => { setNotice(""); setMode("existing"); }}>
             <Search size={28} />
@@ -1409,8 +1414,17 @@ function NewEntryWizard({ companies, positions, organizations, user, lookups, du
           user={user}
           lookups={lookups}
           duplicateDraft={duplicateDraft}
-          onCreated={(createdPosition) => {
+          onCreated={async (createdPosition, action) => {
             onDuplicateDraftUsed?.();
+            if (action === "save") {
+              setMode("");
+              setPosition(null);
+              setSearch("");
+              setNotice(`Pozicija ${createdPosition.containerNumber} je snimljena. Fakturu mozes dodati naknadno kroz Postojeca pozicija.`);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+              await onDone();
+              return;
+            }
             setNotice("");
             setPosition(createdPosition);
           }}
@@ -1451,6 +1465,7 @@ function NewEntryWizard({ companies, positions, organizations, user, lookups, du
 }
 
 function NewPositionStep({ companies, organizations, user, lookups, duplicateDraft, onCreated }) {
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     organizationId: duplicateDraft?.organizationId || organizations[0]?.id || "",
     containerNumber: "",
@@ -1478,12 +1493,16 @@ function NewPositionStep({ companies, organizations, user, lookups, duplicateDra
 
   async function save(event) {
     event.preventDefault();
+    if (saving) return;
+    const action = event.nativeEvent.submitter?.value || "invoice";
+    setSaving(true);
     setError("");
     try {
       const result = await request("/positions", { method: "POST", body: JSON.stringify(form) });
-      onCreated({ ...result.data, company: companies.find((company) => company.id === Number(form.companyId)), invoices: [], financial: {} });
+      await onCreated({ ...result.data, company: companies.find((company) => company.id === Number(form.companyId)), invoices: [], financial: {} }, action);
     } catch (err) {
       setError(err.message);
+      setSaving(false);
     }
   }
 
@@ -1578,7 +1597,8 @@ function NewPositionStep({ companies, organizations, user, lookups, duplicateDra
           Napomena
           <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
         </label>
-        <button className="primary">Nastavi na fakturu</button>
+        <button type="submit" className="primary" value="invoice" disabled={saving}>Nastavi na fakturu</button>
+        <button type="submit" className="secondary" value="save" disabled={saving}>Snimi poziciju</button>
       </form>
     </section>
   );
